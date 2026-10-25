@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Quant Barometer · Inflation and growth nowcasts</title>
+<meta name="description" content="The Quant Barometer: nowcasts of the next CPI and GDP print for 17 economies, every input dated by when it was published, scored in real time against last month's print, published benchmarks and prediction markets.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/base.css">
+<link rel="stylesheet" href="assets/barometer.css">
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div>
+        <h1>The Quant <b>Barometer</b></h1>
+        <p class="sub">Inflation and growth nowcasts · 17 economies · point in time</p>
+      </div>
+    </div>
+    <div class="topbar-right"><div class="asof" id="freshness"></div></div>
+  </div>
+</header>
+
+<nav class="tabs" aria-label="Sections">
+  <div class="tabs-inner" role="tablist">
+    <button class="tab" role="tab" data-tab="monitor" aria-selected="true" aria-controls="tab-monitor">Monitor</button>
+    <button class="tab" role="tab" data-tab="economies" aria-selected="false" aria-controls="tab-economies">Economies</button>
+    <button class="tab" role="tab" data-tab="country" aria-selected="false" aria-controls="tab-country">Country</button>
+    <button class="tab" role="tab" data-tab="growth" aria-selected="false" aria-controls="tab-growth">Growth</button>
+    <button class="tab" role="tab" data-tab="record" aria-selected="false" aria-controls="tab-record">Track record</button>
+    <button class="tab" role="tab" data-tab="method" aria-selected="false" aria-controls="tab-method">Methodology</button>
+  </div>
+</nav>
+
+<div class="ticker" aria-label="Releases ahead"><div class="ticker-in" id="ticker"></div></div>
+
+<main id="main">
+
+<!-- ── Monitor ─────────────────────────────────────────────────────────── -->
+<section id="tab-monitor" class="panel" role="tabpanel">
+  <div class="sh lg">
+    <div class="sh-main">
+      <span class="kicker">Inflation and growth nowcasts</span>
+      <h2 class="sh-title">Every next print, called before it lands.</h2>
+      <p class="sh-sub" id="hero-sub"></p>
+    </div>
+    <div class="sh-side">
+      <button class="sh-link" type="button" data-goto="country"><b>Country →</b><span>One economy, every number</span></button>
+      <button class="sh-link" type="button" data-goto="growth"><b>Growth →</b><span>US GDP, live</span></button>
+      <button class="sh-link" type="button" data-goto="record"><b>Track record →</b><span>We say it. Then we check it.</span></button>
+    </div>
+  </div>
+  <section class="kpis" id="kpis" aria-label="Headline figures"></section>
+  <p class="explain wide" id="mon-explain"></p>
+
+  <div class="grid">
+    <figure class="card" id="card-board">
+      <figcaption><h3>Release board <span class="ctx" id="board-count"></span></h3>
+        <div class="card-tools">
+          <div class="segb" id="seg-scope" aria-label="Targets"></div>
+          <div class="segb" id="seg-region" aria-label="Region"></div>
+          <input class="search" type="search" id="board-search" placeholder="Search economy or print" aria-label="Search the release board">
+        </div></figcaption>
+      <div class="tablewrap" id="board" style="max-height:640px"></div>
+      <p class="note">Sorted by release date. <b>Ours</b> is our mean for the next print, with its standard deviation and the most likely print at the agency's rounding. <b>P(&gt; last)</b> is our chance the print comes in above the last one. <b>Skill</b> = 1 − our RMSE ÷ the reference's RMSE over the full real-time history: right of the line beats it, and the volt mark means the gap is significant at 5% (Diebold-Mariano). Kalshi is shown as a reference only, never an input. Select a row to open the economy.</p>
+    </figure>
+
+    <figure class="card seventwelfths" id="card-heat">
+      <figcaption><h3>Hotter or cooler? <span class="ctx">headline y/y · last print → our call</span></h3></figcaption>
+      <div class="legend-row"><span><i style="background:var(--c-naive)"></i>last print</span><span><i style="background:var(--signal)"></i>our call</span><span><i style="background:var(--hot)"></i>heating</span><span><i style="background:var(--cool)"></i>cooling</span></div>
+      <div class="plot" id="chart-heat"></div>
+    </figure>
+
+    <figure class="card fivetwelfths" id="card-skill">
+      <figcaption><h3>Where the skill is <span class="ctx">headline · full history</span></h3></figcaption>
+      <div class="legend-row"><span><i style="background:var(--signal)"></i>vs last print</span><span><i style="background:var(--c-bench)"></i>vs benchmark</span><span><i style="background:var(--volt)"></i>significant at 5%</span></div>
+      <div class="plot" id="chart-skill"></div>
+    </figure>
+
+    <figure class="card" id="card-last">
+      <figcaption><h3>Last print scorecard <span class="ctx">latest release v our call the day before · largest miss first</span></h3></figcaption>
+      <div class="tablewrap" id="lastprint"></div>
+      <p class="note"><b>z</b> = error ÷ our stated standard deviation. About one print in five should land outside the 80% band; more than that and the band is too narrow, fewer and it is too wide. <b>Closer</b> means a smaller miss than last month's print or the benchmark.</p>
+    </figure>
+
+    <figure class="card half" id="card-calib">
+      <figcaption><h3>How sure are we? <span class="ctx">every headline print since 2015, pooled</span></h3></figcaption>
+      <div class="lede-row" id="calib-tiles"></div>
+      <div class="plot" id="chart-calib"></div>
+    </figure>
+    <figure class="card half" id="card-pit">
+      <figcaption><h3>Where the prints land <span class="ctx">in our forecast distribution</span></h3></figcaption>
+      <div class="plot" id="chart-pit"></div>
+      <p class="note">Each print's position in the distribution we gave the day before, in tenths. Honest forecasts give a flat bar chart: a hump in the middle means the bands were too wide, high edges too narrow.</p>
+    </figure>
+  </div>
+</section>
+
+<!-- ── Economies ───────────────────────────────────────────────────────── -->
+<section id="tab-economies" class="panel" role="tabpanel" hidden>
+  <div class="sh">
+    <div class="sh-main"><span class="kicker">Cross-section</span><h2 class="sh-title">Seventeen economies. One scale.</h2>
+      <p class="sh-sub">The headline print for every economy: the last three years of first prints, our call for the next one, and how far our record beats the simplest rule there is, last month's print.</p></div>
+  </div>
+  <div class="band" id="power-band">
+    <span class="kicker">The power list</span>
+    <h3>Most skilled, headline CPI</h3>
+    <div class="power" id="power"></div>
+  </div>
+  <div class="grid">
+    <figure class="card"><figcaption><h3>All economies <span class="ctx">36 first prints in volt · our call in blue · select to open</span></h3>
+      <div class="card-tools"><div class="segb" id="seg-eco-region" aria-label="Region"></div></div></figcaption>
+      <div class="multiples" id="multiples"></div></figure>
+    <figure class="card"><figcaption><h3>The cross-section <span class="ctx">our call v last print, headline y/y</span></h3></figcaption>
+      <div class="plot" id="chart-xs"></div>
+      <p class="note">Above the diagonal we expect the print to rise from the last one; below it, to fall. Distance from the diagonal is the size of the call.</p></figure>
+  </div>
+</section>
+
+<!-- ── Country ─────────────────────────────────────────────────────────── -->
+<section id="tab-country" class="panel" role="tabpanel" hidden>
+  <div class="picker" id="picker" aria-label="Economy"></div>
+  <div class="call" id="call"></div>
+  <div class="filters"><span class="filter-label">Target</span><div class="segb" id="seg-target" aria-label="Target"></div>
+    <span class="filter-label">History</span><div class="segb" id="seg-lookback" aria-label="History length"></div></div>
+  <div class="grid" id="country-grid">
+    <figure class="card fivetwelfths"><figcaption><h3 id="dist-title">Print distribution</h3></figcaption>
+      <div class="legend-row" id="dist-legend"></div><div class="plot" id="chart-dist"></div>
+      <p class="note" id="dist-note"></p></figure>
+    <figure class="card seventwelfths"><figcaption><h3>We said. It happened. <span class="ctx" id="hist-ctx"></span></h3></figcaption>
+      <div class="legend-row" id="hist-legend"></div><div class="plot" id="chart-hist"></div></figure>
+    <figure class="card"><figcaption><h3>Accuracy by window <span class="ctx">release-eve nowcast v first print</span></h3></figcaption>
+      <div class="tablewrap" id="acc"></div>
+      <p class="note"><b>Skill</b> = 1 − RMSE ours ÷ RMSE of the reference. <b>DM p</b> is the two-sided Diebold-Mariano p-value on squared errors (Newey-West): under 0.05 the difference is unlikely to be luck. <b>Bias</b> = mean of print − ours. <b>Cover</b> is the share of prints inside our 50% and 80% bands (targets 0.50 and 0.80). <b>Hit</b> is how often our most likely print was the one published.</p></figure>
+    <figure class="card half"><figcaption><h3>Rolling 12-month RMSE <span class="ctx">pp, trailing twelve prints</span></h3></figcaption>
+      <div class="legend-row" id="roll-legend"></div><div class="plot" id="chart-roll"></div></figure>
+    <figure class="card half"><figcaption><h3>Every miss, standardised <span class="ctx">last 60 prints · z = error ÷ our sd</span></h3></figcaption>
+      <div class="plot" id="chart-z"></div></figure>
+  </div>
+  <div class="grid" id="extras"></div>
+</section>
+
+<!-- ── Growth ──────────────────────────────────────────────────────────── -->
+<section id="tab-growth" class="panel" role="tabpanel" hidden>
+  <div class="sh">
+    <div class="sh-main"><span class="kicker">Growth · BEA advance estimate</span><h2 class="sh-title" id="gdp-title">US real GDP</h2>
+      <p class="sh-sub" id="gdp-sub"></p></div>
+  </div>
+  <section class="kpis" id="gdp-kpis" aria-label="GDP headline figures"></section>
+  <div class="grid">
+    <figure class="card half"><figcaption><h3>Chance the print beats each strike</h3></figcaption>
+      <div class="legend-row"><span><i style="background:var(--signal)"></i>ours</span><span><i class="ring"></i>Kalshi mid (reference)</span></div>
+      <div class="plot" id="chart-strikes"></div></figure>
+    <figure class="card half"><figcaption><h3>What each model says</h3></figcaption>
+      <div class="plot" id="chart-models"></div>
+      <p class="note">Weights are chosen walk-forward from errors before this quarter. A model at zero weight is scored but left out of this quarter's blend; the factor model on pseudo-real-time data is never in it.</p></figure>
+    <figure class="card half"><figcaption><h3>Accuracy by horizon <span class="ctx">RMSE pp, 2010-26, ex 2020 Q2-Q3</span></h3></figcaption>
+      <div class="legend-row"><span><i style="background:var(--signal)"></i>ours</span><span><i style="background:var(--c-bench)"></i>GDPNow</span><span><i style="background:var(--c-bench2)"></i>NY Fed</span><span><i class="dash"></i>naive</span></div>
+      <div class="plot" id="chart-horizon"></div>
+      <p class="note">Ours is compared on the quarters each benchmark covers. The New York Fed series is 14 quarters (2023-26).</p></figure>
+    <figure class="card half"><figcaption><h3>Kalshi KXGDP, settled</h3></figcaption>
+      <div class="tablewrap" id="gdp-kalshi"></div>
+      <p class="note">Brier score of P(print above strike) against settlement; lower is better. Market prices are a reference only and never enter the model.</p></figure>
+    <figure class="card"><figcaption><h3>Advance print v the nowcasts</h3>
+      <div class="card-tools"><div class="segb" id="seg-gdph" aria-label="Days before release"></div></div></figcaption>
+      <div class="legend-row"><span><i style="background:var(--volt)"></i>advance print</span><span><i style="background:var(--signal)"></i>ours</span><span><i style="background:var(--c-bench)"></i>GDPNow</span><span><i style="background:var(--c-bench2)"></i>NY Fed</span></div>
+      <div class="plot" id="chart-gdphist"></div>
+      <p class="note">2020 Q2 and Q3 (−32.9 and +33.1) are left off so the other quarters can be read.</p></figure>
+  </div>
+</section>
+
+<!-- ── Track record ────────────────────────────────────────────────────── -->
+<section id="tab-record" class="panel" role="tabpanel" hidden>
+  <div class="sh">
+    <div class="sh-main"><span class="kicker">Track record</span><h2 class="sh-title">We say it. Then we check it.</h2>
+      <p class="sh-sub">Every target, every economy, scored the same way: the nowcast made the day before each release with only what was published by then, against the first print. Nothing here was tuned on the period it is scored on.</p></div>
+  </div>
+  <div class="filters"><span class="filter-label">Window from</span><div class="segb" id="seg-window" aria-label="Window"></div>
+    <span class="filter-label">Targets</span><div class="segb" id="seg-rscope" aria-label="Targets"></div><span class="spacer"></span><span class="filter-label" id="rec-count"></span></div>
+  <div class="grid">
+    <figure class="card"><figcaption><h3>Every target <span class="ctx">RMSE pp · skill v last print and v benchmark</span></h3></figcaption>
+      <div class="tablewrap" id="record" style="max-height:720px"></div></figure>
+  </div>
+</section>
+
+<!-- ── Methodology ─────────────────────────────────────────────────────── -->
+<section id="tab-method" class="panel" role="tabpanel" hidden>
+  <div class="sh"><div class="sh-main"><span class="kicker">Methodology</span><h2 class="sh-title">How the number is made</h2></div></div>
+  <div class="grid">
+    <figure class="card"><div class="prose">
+      <h3>Point in time, always</h3>
+      <p>Every observation in the store carries the moment it was <strong>published</strong>, not the period it covers. The first value of a series for a date takes the earlier of when we first saw it and the source's publication rule; a revision counts from when we first saw it and is never back-dated. A source with no declared rule counts from when we fetched it. The backtest decides each month at the earlier of ten days after month end and the business day before the release, and scores against the <strong>first print</strong>. Basket weights count only once published, and every model choice and blend weight is re-made each month from errors before that month (walk-forward).</p>
+      <h3>No market or benchmark inputs</h3>
+      <p>Prediction-market prices, financial market data, surveys and consensus, and other institutions' nowcasts (the Cleveland Fed, GDPNow, the New York Fed, Focus, REM) are stored for scoring only and never enter a model. Official statistics an agency releases before the target print, such as a city CPI or a first-half-month index, are inputs, dated by their release time.</p>
+      <h3>Bottom-up CPI</h3>
+      <p>Each economy's CPI is rebuilt from its published item tree: one model per leaf (seasonal AR by default, level-adaptive trends for rents, step models for insurance, indicator regressions where a free high-frequency series measures the item: pump prices, wholesale fuel, day-ahead power, used-car auctions, exchange rates), 20,000 joint draws aggregated with the agency's weights, the agency's rounding applied to the level before the rate, then blended with a top-down model at a weight chosen walk-forward. Spreads are scaled by the trailing 24 months of our own standardised errors.</p>
+      <h3>GDP</h3>
+      <p>Bridge equations from monthly hard data, a component bridge by expenditure and a mixed-frequency dynamic factor model refitted at every decision, on Philadelphia Fed real-time vintages and Census first prints. High-frequency series (claims, withheld taxes, fuel, rail, air travel) enter as partial months. No market data at all.</p>
+      <h3>Not overfitting</h3>
+      <p>New features must be motivated before they are tested and must win walk-forward in both an early and a late window; the final stretch from July 2025 is a frozen holdout, run once. We report significance (Diebold-Mariano) beside every skill number, and the calibration charts show whether the stated uncertainty is honest.</p>
+    </div></figure>
+    <figure class="card"><figcaption><h3>Data lineage <span class="ctx">when each source counts as published</span></h3>
+      <div class="card-tools"><input class="search" type="search" id="lineage-search" placeholder="Search sources" aria-label="Search sources"></div></figcaption>
+      <div class="tablewrap" id="lineage" style="max-height:560px"></div></figure>
+    <figure class="card"><div class="glossary" id="glossary"></div></figure>
+  </div>
+</section>
+</main>
+
+<footer><div class="page">
+  <p><b>The Quant Barometer</b> is a research project: statistical estimates that are frequently wrong. Nothing here is investment advice or a recommendation to trade. Data from national statistics offices, the BLS, StatCan, ONS, Eurostat, EIA, the Federal Reserve Banks of Cleveland (CC BY) and Philadelphia, the Atlanta Fed, the New York Fed, BCB, BCRA and the Kalshi public API; each is used under its own terms. <span id="built"></span></p>
+</div></footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
