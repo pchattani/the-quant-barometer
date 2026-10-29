@@ -136,6 +136,10 @@
       <p class="note" id="dist-note"></p></figure>
     <figure class="card seventwelfths"><figcaption><h3>We said. It happened. <span class="ctx" id="hist-ctx"></span></h3></figcaption>
       <div class="legend-row" id="hist-legend"></div><div class="plot" id="chart-hist"></div></figure>
+    <figure class="card"><figcaption><h3>Our call, day by day <span class="ctx" id="path-ctx"></span></h3></figcaption>
+      <div class="legend-row"><span><i style="background:var(--signal)"></i>our call (80% band)</span><span><i style="background:var(--volt)"></i>last print</span></div>
+      <div class="plot" id="chart-path"></div>
+      <p class="note">Each point is the last nowcast of that day, made with only what was published by then. The call moves when a high-frequency input lands (fuel, power, exchange rates, live prices) or when an official release changes the history.</p></figure>
     <figure class="card"><figcaption><h3>Accuracy by window <span class="ctx">release-eve nowcast v first print</span></h3></figcaption>
       <div class="tablewrap" id="acc"></div>
       <p class="note"><b>Skill</b> = 1 − RMSE ours ÷ RMSE of the reference. <b>DM p</b> is the two-sided Diebold-Mariano p-value on squared errors (Newey-West): under 0.05 the difference is unlikely to be luck. <b>Bias</b> = mean of print − ours. <b>Cover</b> is the share of prints inside our 50% and 80% bands (targets 0.50 and 0.80). <b>Hit</b> is how often our most likely print was the one published.</p></figure>

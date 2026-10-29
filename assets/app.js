@@ -189,6 +189,7 @@ render.monitor = function () {
   drawBoard(); drawHeat(); drawSkill(); drawLast(); drawCalib();
 };
 
+const moveOf = (r) => { if (!isHead(r) || r.family === "GDP") return null; const e = BOARD.economies.find((x) => x.cc === r.cc && x.headline === r.target); return e && isNum(e.move_7d) ? e.move_7d : null; };
 function drawBoard() {
   const rows = BOARD.board.filter((r) => (state.scope === "all" || isHead(r))
     && (state.region === "all" || (state.region === "GDP" ? r.family === "GDP" : r.region === state.region))
@@ -200,6 +201,7 @@ function drawBoard() {
     { key: "label", label: "Print", render: (r) => el("span", {}, [r.label, unitTag(r.unit)]) },
     { key: "period", label: "Period", lo: true, render: (r) => periodFmt(r.period) },
     { key: "nowcast", label: "Ours", n: true, render: (r) => el("b", { class: "pos", text: val(num(r.nowcast), r.unit) }) },
+    { key: "move", label: "7-day move", n: true, sortv: (r) => moveOf(r), render: (r) => { const m = moveOf(r); return el("span", { class: m === null ? "" : m > 0.0005 ? "up" : m < -0.0005 ? "down" : "", text: m === null ? "—" : sg(m, 3) }); } },
     { key: "sd", label: "±1σ", n: true, lo: true, render: (r) => f2(num(r.sd)) },
     { key: "mode", label: "Mode", n: true, render: (r) => String(r.mode ?? "—") },
     { key: "p_mode", label: "P(mode)", n: true, lo: true, render: (r) => pct(num(r.p_mode)) },
@@ -405,6 +407,17 @@ function drawCountryCharts(F, T) {
   tr.push({ type: "scatter", mode: "lines", x, y: H.map((r) => r.o), line: { color: C.ours, width: 2.2 }, name: "ours", hovertemplate: "Ours %{y:.2f}<extra></extra>" },
     { type: "scatter", mode: "markers", x, y: H.map((r) => r.a), marker: { color: C.actual, size: 5 }, name: "print", hovertemplate: "%{x|%b %Y}<br>Print %{y:.2f}<extra></extra>" });
   mount("chart-hist", tr, { xaxis: axis("Reference month", { type: "date" }), yaxis: axis(T.unit), hovermode: "x unified" }, 340);
+  // the path through the month
+  const P = (T.path || []).filter((r) => isNum(r[1]));
+  $("#path-ctx").textContent = P.length ? `${periodFmt(T.period)} · ${P.length} day${P.length === 1 ? "" : "s"} of runs` : "the daily archive starts with the next run";
+  const px = P.map((r) => D(r[0]));
+  const pshapes = isNum(T.last) ? [{ type: "line", xref: "paper", x0: 0, x1: 1, y0: T.last, y1: T.last, line: { color: C.actual, width: 1.5, dash: "dot" } }] : [];
+  mount("chart-path", [
+    { type: "scatter", mode: "lines", x: px, y: P.map((r) => (isNum(r[2]) ? r[1] + 1.2816 * r[2] : null)), line: { width: 0 }, hoverinfo: "skip" },
+    { type: "scatter", mode: "lines", x: px, y: P.map((r) => (isNum(r[2]) ? r[1] - 1.2816 * r[2] : null)), line: { width: 0 }, fill: "tonexty", fillcolor: "rgba(125,147,255,0.16)", hoverinfo: "skip" },
+    { type: "scatter", mode: "lines+markers", x: px, y: P.map((r) => r[1]), line: { color: C.ours, width: 2.6 }, marker: { size: 7, color: C.ours },
+      customdata: P.map((r) => r[2]), hovertemplate: "%{x|%a %d %b}<br>Our call %{y:.3f} ± %{customdata:.2f}<extra></extra>" }],
+  { xaxis: axis("Run date", { type: "date" }), yaxis: axis(T.unit), shapes: pshapes, hovermode: "x unified" }, 280);
   // accuracy windows
   const W = T.windows;
   sortable($("#acc"), [
