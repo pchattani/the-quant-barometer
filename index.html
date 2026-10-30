@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>The Quant Barometer · Inflation and growth nowcasts</title>
+<link rel="icon" href="data:,">
 <meta name="description" content="The Quant Barometer: nowcasts of the next CPI and GDP print for 17 economies, every input dated by when it was published, scored in real time against last month's print, published benchmarks and prediction markets.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -33,6 +34,7 @@
     <button class="tab" role="tab" data-tab="monitor" aria-selected="true" aria-controls="tab-monitor">Monitor</button>
     <button class="tab" role="tab" data-tab="economies" aria-selected="false" aria-controls="tab-economies">Economies</button>
     <button class="tab" role="tab" data-tab="country" aria-selected="false" aria-controls="tab-country">Country</button>
+    <button class="tab" role="tab" data-tab="hf" aria-selected="false" aria-controls="tab-hf">High frequency</button>
     <button class="tab" role="tab" data-tab="growth" aria-selected="false" aria-controls="tab-growth">Growth</button>
     <button class="tab" role="tab" data-tab="record" aria-selected="false" aria-controls="tab-record">Track record</button>
     <button class="tab" role="tab" data-tab="method" aria-selected="false" aria-controls="tab-method">Methodology</button>
@@ -151,6 +153,43 @@
   <div class="grid" id="extras"></div>
 </section>
 
+<!-- ── High frequency ──────────────────────────────────────────────────── -->
+<section id="tab-hf" class="panel" role="tabpanel" hidden>
+  <div class="sh">
+    <div class="sh-main"><span class="kicker">High frequency</span><h2 class="sh-title">What moved, and where it lands.</h2>
+      <p class="sh-sub" id="hf-sub"></p></div>
+  </div>
+  <p class="explain wide" id="hf-explain"></p>
+  <div class="filters"><span class="filter-label">View</span><div class="segb" id="seg-hfview" aria-label="View"></div></div>
+
+  <div id="hf-all">
+    <section class="kpis" id="hf-kpis" aria-label="High-frequency figures"></section>
+    <div class="grid">
+      <figure class="card seventwelfths"><figcaption><h3>What moved this month <span class="ctx">validated inputs · largest moves, two per economy</span></h3></figcaption>
+        <div class="legend-row"><span><i style="background:var(--hot)"></i>month-to-date average v last month, up</span><span><i style="background:var(--cool)"></i>down</span><span><i class="dia"></i>last 7 days</span></div>
+        <div class="plot" id="chart-hfmoves"></div>
+        <p class="note">Each input's month-to-date average against last month's average, the way a monthly price index sees it, and its change over the last seven days. Hover for the CPI leaf it feeds and that leaf's weight in the basket.</p></figure>
+      <figure class="card fivetwelfths"><figcaption><h3>Live prices v the model <span class="ctx">headline · experimental</span></h3></figcaption>
+        <div class="legend-row"><span><i style="background:var(--c-live)"></i>model + live prices − model</span></div>
+        <div class="plot" id="chart-hflive"></div>
+        <p class="note">How far the experimental run with our daily price panels sits from the validated nowcast, in points of each economy's headline (m/m or y/y as published). <b>c</b> is the share of the month's change the panels have seen; the live layer's weight grows with it.</p></figure>
+      <figure class="card"><figcaption><h3>Validated inputs by economy <span class="ctx">select a row to open the economy</span></h3></figcaption>
+        <div class="tablewrap" id="hf-inputs" style="max-height:640px"></div>
+        <p class="note"><b>Validated</b>: daily or weekly series read by a leaf model that passed our walk-forward tests. <b>Experimental</b>: the pooled live price index of each leaf. <b>Related</b>: series no model reads, including single-panel indices. <b>Latest input</b> is the newest observation of any validated series; a daily series counts as late after 4 days without data and stopped after 10, a weekly one after 10 and 17. <b>Biggest move</b> is the validated input with the largest month-to-date move.</p></figure>
+      <figure class="card"><figcaption><h3>The live-prices layer <span class="ctx">experimental · coverage and effect on the headline</span></h3></figcaption>
+        <div class="tablewrap" id="hf-livecov" style="max-height:640px"></div>
+        <p class="note"><b>Basket</b>: weight of the leaves with a live index. <b>Products</b>: products matched on each leaf's latest scrape day. <b>Model</b> is our call; <b>Model + live</b> is the experimental run that adds the panels, shown for information and not a forecast we stand behind until it has a record.</p></figure>
+    </div>
+  </div>
+
+  <div id="hf-one" hidden>
+    <div class="picker" id="hf-picker" aria-label="Economy"></div>
+    <div class="call" id="hf-call"></div>
+    <div class="filters"><span class="filter-label">Input history</span><div class="segb" id="seg-hfwin" aria-label="History length"></div></div>
+    <div class="grid" id="hf-grid"></div>
+  </div>
+</section>
+
 <!-- ── Growth ──────────────────────────────────────────────────────────── -->
 <section id="tab-growth" class="panel" role="tabpanel" hidden>
   <div class="sh">
@@ -205,6 +244,8 @@
       <p>Prediction-market prices, financial market data, surveys and consensus, and other institutions' nowcasts (the Cleveland Fed, GDPNow, the New York Fed, Focus, REM) are stored for scoring only and never enter a model. Official statistics an agency releases before the target print, such as a city CPI or a first-half-month index, are inputs, dated by their release time.</p>
       <h3>Bottom-up CPI</h3>
       <p>Each economy's CPI is rebuilt from its published item tree: one model per leaf (seasonal AR by default, level-adaptive trends for rents, step models for insurance, indicator regressions where a free high-frequency series measures the item: pump prices, wholesale fuel, day-ahead power, used-car auctions, exchange rates), 20,000 joint draws aggregated with the agency's weights, the agency's rounding applied to the level before the rate, then blended with a top-down model at a weight chosen walk-forward. Spreads are scaled by the trailing 24 months of our own standardised errors.</p>
+      <h3>High-frequency inputs and live prices</h3>
+      <p>A leaf model reads a daily or weekly series (pump prices, wholesale fuel, day-ahead power, exchange rates) only once that series has won walk-forward in both an early and a late window; those are the <strong>validated</strong> inputs, and they feed the call. Since October 2026 we also scrape daily prices from retailers, travel sites and car listings and chain them into one index per CPI leaf. That <strong>live-prices layer</strong> has no history to test, so it is <strong>experimental</strong>: a second run updates each covered leaf by the share of the month the panels have seen, is archived beside the validated nowcast and is scored once the prints are out. It is not our call and will not become part of it without a record.</p>
       <h3>GDP</h3>
       <p>Bridge equations from monthly hard data, a component bridge by expenditure and a mixed-frequency dynamic factor model refitted at every decision, on Philadelphia Fed real-time vintages and Census first prints. High-frequency series (claims, withheld taxes, fuel, rail, air travel) enter as partial months. No market data at all.</p>
       <h3>Not overfitting</h3>

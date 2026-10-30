@@ -92,6 +92,27 @@
 @media (max-width: 900px) { .call { grid-template-columns: minmax(0, 1fr); } .call .left { clip-path: none; padding-right: 22px; } }
 @media (max-width: 760px) { .lo { display: none; } .power { grid-template-columns: minmax(0, 1fr); } }
 
+/* ── High frequency: validated inputs (volt, the data) and the experimental live layer (plum) ── */
+:root, :root[data-theme] { --c-live: #c39be8; }
+.tag.val { background: var(--volt-soft); color: var(--volt); }
+.tag.exp { background: rgba(195,155,232,.18); color: var(--c-live); }
+.live { color: var(--c-live); }
+.legend-row i.dia { width: 9px; height: 9px; background: var(--ink-1); transform: rotate(45deg); vertical-align: 0; margin-left: 2px; }
+.legend-row.stats { text-transform: none; letter-spacing: .02em; font-size: 12.5px; gap: 4px 14px; }
+.legend-row.stats > span { color: var(--ink-2); }
+.legend-row.stats b { color: var(--ink-1); font-variant-numeric: tabular-nums; }
+.legend-row.stats small { font: inherit; color: var(--ink-3); }
+.hf-sec { grid-column: 1 / -1; margin: 10px 0 0; border-top: 2px solid var(--ink-1); padding-top: 10px; }
+.hf-sec h3 { font: 400 clamp(1.8rem, 3vw, 2.4rem)/0.95 var(--font-display); letter-spacing: .01em; text-transform: uppercase; color: var(--ink-1); }
+.hf-sec p { color: var(--ink-3); font: 500 13px/1.45 var(--font-ui); max-width: 62em; margin-top: 6px; }
+.hf-groups { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap); }
+.call .linkish { margin-top: 12px; background: none; border: 0; border-bottom: 2px solid var(--volt); color: var(--volt); padding: 0 0 2px; cursor: pointer; font: 700 13px var(--font-cond); letter-spacing: .08em; text-transform: uppercase; }
+.call .linkish:hover { color: #fff; border-bottom-color: #fff; }
+#hf-leafsel { max-width: min(100%, 240px); }
+.filters.tight { margin: 0 0 8px; }
+@media (max-width: 760px) { .hf-groups .card.half { grid-column: span 12; } }
+
 /* stat strip: the note under the number gets its own row */
 .kpis .tile .delta, .lede-row .tile .delta { grid-column: 1 / -1; white-space: normal; margin-top: 4px; }
 .lede-row .tile { flex: 1 1 140px; }
+@media (max-width: 640px) { .nm-full { display: none; } }

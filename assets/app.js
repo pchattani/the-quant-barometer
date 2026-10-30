@@ -41,15 +41,17 @@ const truthy = (v) => v === true || v === "True" || v === "true";
 
 // ── State and routing ───────────────────────────────────────────────────────
 const state = { tab: "monitor", cc: "US", target: null, look: "5", scope: "headline", region: "all", search: "",
-  sort: { key: "release", dir: 1 }, ecoRegion: "all", window: "2015-01", rscope: "headline", gdph: "1", daily: null };
+  sort: { key: "release", dir: 1 }, ecoRegion: "all", window: "2015-01", rscope: "headline", gdph: "1", daily: null,
+  hfView: "all", hfWin: "92", hfTarget: null, hfLeaf: null };
 function readHash() {
   const p = new URLSearchParams(location.hash.slice(1));
   if (p.get("tab")) state.tab = p.get("tab");
   if (p.get("cc")) state.cc = p.get("cc").toUpperCase();
+  if (state.tab === "hf") state.hfView = p.get("cc") ? "one" : "all";
 }
 function writeHash() {
   const p = new URLSearchParams({ tab: state.tab });
-  if (state.tab === "country") p.set("cc", state.cc);
+  if (state.tab === "country" || (state.tab === "hf" && state.hfView === "one")) p.set("cc", state.cc);
   try { history.replaceState(null, "", "#" + p.toString()); } catch (_) { /* sandboxed */ }
 }
 
@@ -335,13 +337,7 @@ function drawMultiples() {
 
 // ── Country ────────────────────────────────────────────────────────────────
 render.country = async function () {
-  const groups = [["Americas", "Americas"], ["Europe", "Europe"], ["Asia-Pacific", "Asia-Pac"]];
-  const pick = $("#picker"); pick.replaceChildren();
-  for (const [g, label] of groups) {
-    pick.append(el("span", { class: "grp", text: label }));
-    for (const e of BOARD.economies.filter((x) => x.region === g)) pick.append(el("button", { type: "button", "aria-pressed": String(e.cc === state.cc), title: e.name,
-      onclick: () => { state.cc = e.cc; state.target = null; state.daily = null; writeHash(); render.country(); } }, e.cc));
-  }
+  buildPicker("picker", (cc) => { state.cc = cc; state.target = null; state.daily = null; writeHash(); render.country(); });
   let F;
   try { F = await load(`country/${state.cc}.json`); } catch (e) { $("#call").replaceChildren(el("div", { class: "left" }, "This economy's feed did not load.")); return; }
   if (!state.target || !F.targets.find((t) => t.id === state.target)) state.target = F.headline;
@@ -520,6 +516,328 @@ function drawExtras(F, T) {
   }
 }
 
+// ── High frequency ─────────────────────────────────────────────────────────
+// The daily and weekly inputs behind the nowcasts (validated: read by a leaf model that passed the walk-forward
+// tests) and the experimental live-prices layer (daily indices from our scraped panels, run beside the call).
+const LINE_COLS = () => [C.actual, C.cool, C.hot, css("--leaf"), css("--warning"), C.ink2];
+const fmtv = (v) => (!isNum(v) ? "—" : Math.abs(v) >= 1000 ? Math.round(v).toLocaleString("en-GB") : v.toFixed(Math.abs(v) >= 100 ? 1 : Math.abs(v) >= 10 ? 2 : 3));
+const sgp = (v, d = 1) => (isNum(v) ? sg(v, d) + "%" : "—");
+const wTxt = (w) => (isNum(w) ? (w * 100).toFixed(w < 0.001 ? 3 : w < 0.01 ? 2 : 1) + "%" : "—");
+const narrow = () => window.innerWidth < 640;
+const cutLabel = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+const dirCls = (v) => (!isNum(v) ? "" : v > 0 ? "up" : v < 0 ? "down" : "");
+const moveSpan = (v, d = 1) => el("span", { class: dirCls(v), text: sgp(v, d) });
+const shortName = (s) => s.replace(/^Day-ahead power, /, "Power ").replace(/ pump price/, "").replace("Euro-super 95", "Petrol 95")
+  .replace("NY Harbor", "NYH").replace("Unleaded terminal gate price", "ULP gate").replace("Unleaded", "ULP").replace(/ \(Com\. A 3500\)/, "");
+const shortDay = (s) => D(s).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+function statusTag(status, age, superseded) {
+  const cls = status === "current" ? "current" : status === "late" ? "due" : superseded ? "none" : "overdue";
+  const txt = status === "current" ? "current" : status === "late" ? "late" : superseded ? "superseded" : "stopped";
+  return el("span", { class: "status " + cls, title: isNum(age) ? `${age} day${age === 1 ? "" : "s"} since the last observation` : "" }, [el("span", { class: "dot" }), txt]);
+}
+function buildPicker(boxId, onPick) {
+  const pick = document.getElementById(boxId); pick.replaceChildren();
+  for (const [g, label] of [["Americas", "Americas"], ["Europe", "Europe"], ["Asia-Pacific", "Asia-Pac"]]) {
+    pick.append(el("span", { class: "grp", text: label }));
+    for (const e of BOARD.economies.filter((x) => x.region === g)) pick.append(el("button", { type: "button", "aria-pressed": String(e.cc === state.cc), title: e.name, onclick: () => onPick(e.cc) }, e.cc));
+  }
+}
+function openHf(cc) { state.cc = cc; state.hfView = "one"; state.hfTarget = null; state.hfLeaf = null; writeHash(); render.hf(); window.scrollTo({ top: 0 }); }
+
+render.hf = async function () {
+  let H;
+  try { H = await load("hf.json"); } catch (e) { $("#hf-all").replaceChildren(el("p", { class: "empty", text: "The high-frequency feed did not load." })); return; }
+  const E = H.economies, liveN = E.reduce((s, e) => s + (e.live.leaves || 0), 0);
+  const cs = E.map((e) => e.live.c).filter(isNum), cMax = cs.length ? Math.max(...cs) : null;
+  $("#hf-sub").textContent = `The daily and weekly series our nowcasts read, and the live price indices we build from ${liveN} CPI leaves in ${E.filter((e) => e.live.leaves).length} economies, so you can see what moved, which leaf it feeds and how much of the basket that leaf is. Data to ${longDay(H.as_of)}.`;
+  $("#hf-explain").replaceChildren(el("b", { text: "Validated or experimental? " }),
+    "Inputs marked ", el("span", { class: "tag val", text: "validated" }), " passed our walk-forward tests and feed the official nowcast. The live-prices layer ",
+    el("span", { class: "tag exp", text: "experimental" }), " is built from our own daily price panels; it has no track record yet, runs beside the nowcast and is shown for information only. ",
+    el("b", { text: "It is not our call: the validated nowcast is the call." }),
+    ` Today the panels carry at most ${isNum(cMax) ? Math.round(cMax * 100) : "a few "}% of the month's change (c), so model + live sits within hundredths of a point of the model; the gap grows as the panels see more of the month.`);
+  segb("seg-hfview", [["all", "All economies"], ["one", "One economy"]], state.hfView, (v) => { state.hfView = v; writeHash(); drawHfView(H); });
+  drawHfView(H);
+};
+function drawHfView(H) {
+  $("#hf-all").hidden = state.hfView !== "all"; $("#hf-one").hidden = state.hfView !== "one";
+  if (state.hfView === "all") drawHfAll(H); else drawHfOne(H);
+}
+
+function drawHfAll(H) {
+  const E = H.economies, sum = (f) => E.reduce((s, e) => s + (f(e) || 0), 0);
+  const latest = E.map((e) => e.latest).filter(Boolean).sort().pop();
+  const ws = E.map((e) => e.live.weight).filter(isNum).sort((a, b) => a - b), wMed = ws.length ? ws[Math.floor(ws.length / 2)] : null;
+  const heads = E.filter((e) => e.head && isNum(e.head.diff));
+  const big = heads.slice().sort((a, b) => Math.abs(b.head.diff) - Math.abs(a.head.diff))[0];
+  const late = sum((e) => e.late), stale = sum((e) => e.stale);
+  const cs = E.map((e) => e.live.c).filter(isNum);
+  $("#hf-kpis").replaceChildren(
+    tile("Validated inputs", String(sum((e) => e.n.validated)), "series", `${E.filter((e) => e.n.validated).length} economies · feed the call`),
+    tile("Latest input", latest ? shortDay(latest) : "—", "", `${late} late · ${stale} stopped`),
+    tile("Live leaves", String(sum((e) => e.live.leaves)), "experimental", `${E.filter((e) => e.live.leaves).length} economies · median ${wTxt(wMed)} of CPI`),
+    tile("Products priced", sum((e) => e.live.products).toLocaleString("en-GB"), "", "on each leaf's latest scrape day"),
+    tile("Coverage c", cs.length ? f2(Math.max(...cs)) : "—", "max", "share of the month's change seen"),
+    tile("Largest live − model", big ? sg(big.head.diff, 3) : "—", "pp", big ? `${big.name} ${big.head.label}` : ""));
+
+  // what moved: the largest month-to-date moves in validated inputs, at most two per economy
+  const mv = E.flatMap((e) => e.moves.filter((m) => isNum(m.mtd)).slice(0, 2).map((m) => ({ ...m, cc: e.cc, name: e.name })))
+    .sort((a, b) => Math.abs(b.mtd) - Math.abs(a.mtd)).slice(0, 16).sort((a, b) => a.mtd - b.mtd);
+  const n = narrow(), yl = mv.map((m) => `${m.cc} · ${n ? cutLabel(shortName(m.label), 20) : cutLabel(m.label, 30)}`);
+  const lim = Math.max(1, ...mv.map((m) => Math.abs(m.mtd)), ...mv.map((m) => (isNum(m.chg7) ? Math.abs(m.chg7) : 0)));
+  mount("chart-hfmoves", [
+    { type: "bar", orientation: "h", x: mv.map((m) => m.mtd), y: mv.map((_, i) => i), marker: { color: mv.map((m) => (m.mtd >= 0 ? C.hot : C.cool)) },
+      text: mv.map((m) => sgp(m.mtd)), textposition: "outside", cliponaxis: false, textfont: { family: COND, size: 12, color: C.ink1 },
+      customdata: mv.map((m) => [m.name, m.label, m.src, fmtv(m.last_v), m.unit, m.leaf_label, wTxt(m.w), shortDay(m.last)]),
+      hovertemplate: "%{customdata[0]} · %{customdata[1]} (%{customdata[2]})<br>Month-to-date average v last month %{x:+.1f}%<br>Last %{customdata[3]} %{customdata[4]} on %{customdata[7]}<br>Feeds %{customdata[5]}, %{customdata[6]} of CPI<extra></extra>" },
+    { type: "scatter", mode: "markers", x: mv.map((m) => m.chg7), y: mv.map((_, i) => i), marker: { symbol: "diamond", size: 10, color: C.ink1, line: { color: C.card, width: 1.5 } },
+      hovertemplate: "7-day change %{x:+.1f}%<extra></extra>" }],
+  { xaxis: axis("Change in the input's price or rate, %", { zeroline: true, zerolinewidth: 2, range: [-lim * 1.3, lim * 1.3] }),
+    yaxis: axis("", { tickvals: mv.map((_, i) => i), ticktext: yl, tickfont: { family: COND, size: n ? 11 : 12, color: C.ink2 } }),
+    margin: { l: 10, r: 16, t: 6, b: 44 }, bargap: 0.3 }, Math.max(300, mv.length * 26 + 70));
+
+  // live minus model, headline
+  const hd = heads.slice().sort((a, b) => a.head.diff - b.head.diff);
+  const dl = Math.max(0.006, ...hd.map((e) => Math.abs(e.head.diff))) * 1.9;
+  mount("chart-hflive", [{ type: "bar", orientation: "h", x: hd.map((e) => e.head.diff), y: hd.map((_, i) => i), marker: { color: css("--c-live") },
+    customdata: hd.map((e) => [e.name, e.head.label, e.head.unit, val(e.head.model, e.head.unit), val(e.head.live, e.head.unit)]),
+    hovertemplate: "%{customdata[0]} %{customdata[1]}, %{customdata[2]}<br>Model %{customdata[3]} · model + live %{customdata[4]}<br>Gap %{x:+.3f} pp<extra></extra>" }],
+  { xaxis: axis("Model + live − model, pp of each headline", { zeroline: true, zerolinewidth: 2, range: [-dl, dl], tickformat: ".3f", nticks: n ? 5 : 9 }),
+    yaxis: axis("", { tickvals: hd.map((_, i) => i), ticktext: hd.map((e) => (n ? e.cc : e.name)), tickfont: { family: COND, size: 12, color: C.ink2 } }),
+    annotations: hd.map((e, i) => ({ x: 0, y: i, xanchor: e.head.diff < 0 ? "left" : "right", xshift: e.head.diff < 0 ? 4 : -4, showarrow: false,
+      text: `${sg(e.head.diff, 3)}${isNum(e.live.c) ? " · c " + f2(e.live.c) : ""}`, font: { family: COND, size: 12, color: C.ink2 } })),
+    margin: { l: 10, r: 16, t: 6, b: 44 }, bargap: 0.35 }, Math.max(300, hd.length * 22 + 70));
+
+  sortable($("#hf-inputs"), [
+    { key: "name", label: "Economy", render: (r) => el("span", {}, [ccTag(r.cc), el("span", { class: "nm-full", text: r.name })]) },
+    { key: "nv", label: "Validated", n: true, lo: true, sortv: (r) => r.n.validated, render: (r) => String(r.n.validated) },
+    { key: "ne", label: "Experimental", n: true, lo: true, sortv: (r) => r.n.experimental, render: (r) => String(r.n.experimental) },
+    { key: "nd", label: "Related", n: true, lo: true, sortv: (r) => r.n.display, render: (r) => String(r.n.display), tip: "Related series no model reads, incl. single-panel live indices" },
+    { key: "latest", label: "Latest input", lo: true, render: (r) => (r.latest ? shortDay(r.latest) : "—") },
+    { key: "flags", label: "Status", sortv: (r) => r.late * 10 + r.stale * 100, render: (r) => (r.late || r.stale ? el("span", { class: "flags" }, [
+      r.stale ? statusTag("stale", null, false) : null, r.stale > 1 ? ` ${r.stale}` : null, r.late ? statusTag("late") : null, r.late > 1 ? ` ${r.late}` : null]) : statusTag("current")),
+      tip: "Current: every validated input is up to date. Late or stopped: at least one is (see the economy)" },
+    { key: "mover", label: "Biggest move", sortv: (r) => (r.moves[0] ? r.moves[0].label : null), render: (r) => (r.moves[0] ? el("span", {}, [narrow() ? cutLabel(shortName(r.moves[0].label), 18) : r.moves[0].label, unitTag(r.moves[0].unit)]) : "—") },
+    { key: "mtd", label: "MTD avg", n: true, sortv: (r) => (r.moves[0] ? r.moves[0].mtd : null), render: (r) => (r.moves[0] ? moveSpan(r.moves[0].mtd) : "—"), tip: "Month-to-date average against last month's average" },
+    { key: "chg7", label: "7 days", n: true, sortv: (r) => (r.moves[0] ? r.moves[0].chg7 : null), render: (r) => (r.moves[0] ? moveSpan(r.moves[0].chg7) : "—") },
+    { key: "leaf", label: "Feeds", lo: true, sortv: (r) => (r.moves[0] ? r.moves[0].w : null), render: (r) => (r.moves[0] ? el("span", {}, [cutLabel(r.moves[0].leaf_label, 26), unitTag(wTxt(r.moves[0].w) + " of CPI")]) : "—") },
+  ], E, { onRow: (r) => openHf(r.cc) });
+
+  sortable($("#hf-livecov"), [
+    { key: "name", label: "Economy", render: (r) => el("span", {}, [ccTag(r.cc), el("span", { class: "nm-full", text: r.name })]) },
+    { key: "leaves", label: "Leaves", n: true, lo: true, sortv: (r) => r.live.leaves, render: (r) => String(r.live.leaves) },
+    { key: "weight", label: "Basket", n: true, sortv: (r) => r.live.weight, render: (r) => wTxt(r.live.weight), tip: "Share of the CPI basket in the leaves with a live index" },
+    { key: "products", label: "Products", n: true, lo: true, sortv: (r) => r.live.products, render: (r) => (r.live.products || 0).toLocaleString("en-GB") },
+    { key: "first", label: "Since", lo: true, sortv: (r) => r.live.first, render: (r) => (r.live.first ? shortDay(r.live.first) : "—") },
+    { key: "c", label: "c", n: true, sortv: (r) => r.live.c, render: (r) => f2(r.live.c), tip: "Share of the month's average-on-average change the days seen carry" },
+    { key: "target", label: "Headline", lo: true, sortv: (r) => (r.head ? r.head.label : null), render: (r) => (r.head ? el("span", {}, [r.head.label, unitTag(r.head.unit)]) : "—") },
+    { key: "model", label: "Model", n: true, sortv: (r) => (r.head ? r.head.model : null), render: (r) => (r.head ? el("b", { class: "pos", text: val(r.head.model, r.head.unit) }) : "—") },
+    { key: "live", label: "Model + live", n: true, sortv: (r) => (r.head ? r.head.live : null), render: (r) => (r.head ? el("span", { class: "live", text: val(r.head.live, r.head.unit) }) : "—") },
+    { key: "diff", label: "Gap, pp", n: true, sortv: (r) => (r.head ? r.head.diff : null), render: (r) => (r.head ? sg(r.head.diff, 3) : "—") },
+  ], E, { onRow: (r) => openHf(r.cc) });
+}
+
+async function drawHfOne(H) {
+  buildPicker("hf-picker", (cc) => { state.cc = cc; state.hfTarget = null; state.hfLeaf = null; writeHash(); drawHfOne(H); });
+  const e = H.economies.find((x) => x.cc === state.cc), grid = $("#hf-grid");
+  if (!e) { $("#hf-call").replaceChildren(); grid.replaceChildren(el("p", { class: "empty", text: "No high-frequency feed for this economy yet." })); return; }
+  let F;
+  try { F = await load(`hf/${state.cc}.json`); } catch (err) { grid.replaceChildren(el("p", { class: "empty", text: "This economy's high-frequency feed did not load." })); return; }
+  if (F.cc !== state.cc) return; // a faster click moved on
+  const econ = BOARD.economies.find((x) => x.cc === F.cc) || {};
+  const top = e.moves[0], L = F.live;
+  const lines = [["Validated inputs", String(Object.keys(F.series).length), e.late || e.stale ? `${e.late} late · ${e.stale} stopped` : "all current"],
+    ["Latest input", e.latest ? shortDay(e.latest) : "—", ""],
+    ["Biggest move, month to date", top ? sgp(top.mtd) : "—", top ? cutLabel(top.label, 28) : ""],
+    ["Live leaves (experimental)", String(L.leaves), `${wTxt(L.weight)} of CPI`],
+    ["Products priced", (L.products || 0).toLocaleString("en-GB"), isNum(L.c) ? `c ${f2(L.c)}` : ""]];
+  if (e.head) lines.push([`Model + live − model, ${e.head.label}`, sg(e.head.diff, 3), "pp"]);
+  $("#hf-call").replaceChildren(
+    el("div", { class: "left" }, [el("div", { class: "who", text: `${econ.subregion || econ.region || ""} · High frequency` }), el("div", { class: "name", text: F.name }),
+      el("div", { class: "meta", text: `Data to ${shortDay(F.as_of)} · validated inputs feed the call · the live layer is experimental` }),
+      e.head ? el("div", { class: "big" }, [el("b", { text: val(e.head.model, e.head.unit) }), el("span", { text: `${e.head.label}, ${e.head.unit} · our call` })]) : null,
+      el("button", { class: "linkish", type: "button", onclick: () => openEconomy(F.cc), text: "Open the full nowcast →" })]),
+    el("div", { class: "right" }, el("div", { class: "lines" }, lines.map(([a, b, c]) => el("div", { class: "line" }, [el("span", { text: a }), el("b", {}, [b, c ? el("small", { text: c }) : null])])))));
+  segb("seg-hfwin", [["31", "1M"], ["92", "3M"], ["365", "1Y"], ["0", "All"]], state.hfWin, (v) => { state.hfWin = v; drawHfGroups(F); });
+  grid.replaceChildren();
+  const sec = (title, text) => grid.append(el("div", { class: "hf-sec" }, [el("h3", { text: title }), text ? el("p", { text }) : null]));
+  sec("Validated inputs", "Each chart is one CPI leaf with the daily or weekly series its model reads, and the leaf's weight in the basket. The shaded band is the current month; MTD compares the month-to-date average with last month's average, which is how the monthly index sees a price.");
+  grid.append(el("div", { class: "hf-groups", id: "hf-groups" }));
+  drawHfGroups(F);
+  if (L.leaves) {
+    sec("Live price indices · experimental", `Daily chained Jevons indices of regular prices from our scraped panels, one per CPI leaf, since ${L.first ? longDay(L.first) : "—"}. Shown for information: they have no track record yet and do not enter the call.`);
+    drawHfLive(F, grid);
+  }
+  if (F.nowcast.length) drawHfNowcast(F, grid);
+  if (F.display.length) drawHfDisplay(F, grid);
+}
+
+function drawHfGroups(F) {
+  const box = $("#hf-groups"); if (!box) return;
+  box.replaceChildren();
+  const days = +state.hfWin, cols = LINE_COLS(), n = narrow();
+  F.groups.forEach((g, gi) => {
+    const S = g.series.map((id) => F.series[id]).filter(Boolean);
+    const live = S.filter((s) => s.status !== "stale" && s.pts && s.pts.length), gone = S.filter((s) => !live.includes(s));
+    const card = el("figure", { class: "card half" }, el("figcaption", {}, el("h3", {}, [cutLabel(g.label, 60),
+      el("span", { class: "ctx", text: `${g.leaves.length ? g.leaves.map((x) => x.code).join(" · ") + " · " : ""}${wTxt(g.w)} of CPI` })])));
+    box.append(card);
+    const units = [...new Set(live.map((s) => s.unit))];
+    units.forEach((u, ui) => {
+      const ss = live.filter((s) => s.unit === u);
+      card.append(el("div", { class: "legend-row stats" }, ss.map((s) => el("span", { title: `${s.label} (${s.src}), ${s.freq}` }, [
+        el("i", { style: `background:${cols[live.indexOf(s) % cols.length]}` }), `${cutLabel(s.label, n ? 26 : 40)} `, el("b", { text: fmtv(s.last_v) }),
+        el("small", { text: ` ${s.unit} · ${shortDay(s.last)} · 7d ` }), moveSpan(s.chg7), el("small", { text: " · MTD " }), moveSpan(s.mtd)]))));
+      const id = `hf-g${gi}-${ui}`;
+      card.append(el("div", { class: "plot", id }));
+      const end = ss.map((s) => s.pts[s.pts.length - 1][0]).sort().pop(), endD = D(end);
+      const start = days ? new Date(endD.getTime() - days * 86400000) : null;
+      const ms = new Date(endD.getFullYear(), endD.getMonth(), 1);
+      const tr = ss.map((s) => {
+        const P = s.pts.filter((p) => !start || D(p[0]) >= start);
+        return { type: "scatter", mode: s.freq === "daily" && P.length > 40 ? "lines" : "lines+markers", x: P.map((p) => D(p[0])), y: P.map((p) => p[1]),
+          line: { color: cols[live.indexOf(s) % cols.length], width: ss.length > 2 ? 1.6 : 2.2 }, marker: { size: 4 },
+          name: cutLabel(s.label, 30), hovertemplate: `${cutLabel(s.label, 34)} %{y:,.4~f} ${s.unit}<extra></extra>` };
+      });
+      mount(id, tr, { xaxis: axis("Date", { type: "date", nticks: n ? 4 : 7 }), yaxis: axis(u, { tickformat: ",.4~f" }), hovermode: "x unified",
+        shapes: [{ type: "rect", xref: "x", yref: "paper", x0: ms, x1: endD, y0: 0, y1: 1, fillcolor: "rgba(212,255,58,0.07)", line: { width: 0 }, layer: "below" }],
+        annotations: [{ xref: "x", yref: "paper", x: ms, y: 1, xanchor: "left", yanchor: "top", text: "MTD", showarrow: false, font: { family: COND, size: 11, color: C.actual } }] }, 250);
+    });
+    if (!live.length) card.append(el("p", { class: "empty", text: "No current data for this leaf." }));
+    if (gone.length) {
+      // stopped series, one line per provider and last date: "Day-ahead power, NO1, NO2 (hvakosterstrommen.no) to 31 Dec 2023"
+      const by = new Map();
+      for (const s of gone) { const k = `${s.src}|${s.last}|${s.superseded}`; if (!by.has(k)) by.set(k, []); by.get(k).push(s); }
+      const longDay2 = (x) => D(x).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+      const parts = [...by.values()].map((ss) => {
+        const head = ss[0].label.replace(/, [^,]+$/, ""), tails = ss.map((s) => (s.label.startsWith(head + ", ") ? s.label.slice(head.length + 2) : s.label));
+        const what = ss.length > 1 && tails.every((t, i) => t !== ss[i].label) ? `${head}, ${tails.join(", ")}` : ss.map((s) => s.label).join("; ");
+        return [el("b", { text: what }), ` (${ss[0].src}) to ${longDay2(ss[0].last)}${ss[0].superseded ? ", continued by the series above" : ": no newer data, the model reads nothing current here"}. `];
+      });
+      card.append(el("p", { class: "note" }, [el("b", { text: "History only: " }), ...parts.flat()]));
+    }
+  });
+  if (!F.groups.length) box.append(el("p", { class: "empty", text: "No validated high-frequency input in this economy: its leaf models read monthly data only." }));
+}
+
+function drawHfLive(F, grid) {
+  const L = F.live.leaves_detail, n = narrow(), live = css("--c-live");
+  // default: the heaviest leaf among those with the longest daily record
+  if (!state.hfLeaf || !L.find((x) => x.leaf === state.hfLeaf)) state.hfLeaf = L.slice().sort((a, b) => b.days - a.days || (b.w || 0) - (a.w || 0))[0].leaf;
+  const dot = el("figure", { class: "card seventwelfths" }, [el("figcaption", {}, el("h3", {}, ["Month to date, every leaf", el("span", { class: "ctx", text: "% · ± 1 standard error" })])),
+    el("div", { class: "plot", id: "chart-hfdots" }),
+    el("p", { class: "note", text: "Month-to-date average of the daily index against last month's average (days before the first scrape take the first level), so early in the panels' life it moves little. Error bars: ± 1 bootstrap standard error over products. Select a leaf for its path." })]);
+  const path = el("figure", { class: "card fivetwelfths" }, [el("figcaption", {}, [el("h3", {}, ["One leaf, day by day"]),
+    el("div", { class: "card-tools" }, el("select", { class: "ctl", id: "hf-leafsel", "aria-label": "Leaf" }))]),
+    el("div", { class: "legend-row" }, [el("span", {}, [el("i", { style: `background:${live}` }), "MTD change (± 1 s.e.)"]), el("span", {}, [el("i", { style: "background:var(--slate)" }), "products matched"])]),
+    el("div", { class: "plot", id: "chart-hfleaf" }), el("p", { class: "note", id: "hf-leafnote" })]);
+  const tbl = el("figure", { class: "card" }, [el("figcaption", {}, el("h3", {}, ["Every live leaf", el("span", { class: "ctx", text: `${F.live.leaves} leaves · ${wTxt(F.live.weight)} of CPI · select a row` })])),
+    el("div", { class: "tablewrap", id: "hf-leaftable", style: "max-height:520px" })]);
+  grid.append(dot, path, tbl);
+  const S = L.filter((x) => isNum(x.mtd)).sort((a, b) => a.mtd - b.mtd);
+  // agencies reuse names ("Resto", "Other"): add the code where a name repeats
+  const dup = new Set(L.map((x) => x.name).filter((nm, i, a) => a.indexOf(nm) !== i));
+  const leafName = (x, k) => (dup.has(x.name) ? `${cutLabel(x.name, k - x.leaf.length - 3)} (${x.leaf})` : cutLabel(x.name, k));
+  const lim = Math.max(0.05, ...S.map((x) => Math.abs(x.mtd) + (x.se || 0))) * 1.15;
+  mount("chart-hfdots", [{ type: "scatter", mode: "markers", x: S.map((x) => x.mtd), y: S.map((_, i) => i),
+    error_x: { type: "data", array: S.map((x) => x.se || 0), color: live, thickness: 1.5, width: 0 },
+    marker: { size: 8, color: S.map((x) => (x.leaf === state.hfLeaf ? C.actual : live)), line: { color: C.card, width: 1 } },
+    customdata: S.map((x) => [x.name, wTxt(x.w), x.n.toLocaleString("en-GB"), f3(x.se), shortDay(x.date), x.leaf]),
+    hovertemplate: "%{customdata[0]} (%{customdata[1]} of CPI)<br>MTD %{x:+.3f}% ± %{customdata[3]}<br>%{customdata[2]} products on %{customdata[4]}<extra></extra>" }],
+  { xaxis: axis("Month-to-date change, %", { zeroline: true, zerolinewidth: 2, range: [-lim, lim] }),
+    yaxis: axis("", { tickvals: S.map((_, i) => i), ticktext: S.map((x) => `${leafName(x, n ? 20 : 34)} · ${wTxt(x.w)}`), tickfont: { family: COND, size: n ? 11 : 12, color: C.ink2 } }),
+    margin: { l: 10, r: 16, t: 6, b: 44 } }, Math.max(280, S.length * 21 + 70));
+  $("#chart-hfdots").on("plotly_click", (ev) => { const p = ev.points && ev.points[0]; if (p) { state.hfLeaf = S[p.pointIndex].leaf; drawHfLeaf(F); } });
+  const sel = $("#hf-leafsel");
+  sel.replaceChildren(...L.map((x) => el("option", { value: x.leaf, text: leafName(x, 44) })));
+  sel.onchange = () => { state.hfLeaf = sel.value; drawHfLeaf(F); };
+  sortable($("#hf-leaftable"), [
+    { key: "name", label: "Leaf", render: (r) => (narrow() ? leafName(r, 18) : el("span", {}, [cutLabel(r.name, 44), unitTag(r.leaf)])) },
+    { key: "w", label: "Weight", n: true, render: (r) => wTxt(r.w) },
+    { key: "n", label: "Products", n: true, lo: true, render: (r) => r.n.toLocaleString("en-GB") },
+    { key: "idx", label: "Since start", n: true, sortv: (r) => r.idx, render: (r) => moveSpan(isNum(r.idx) ? r.idx - 100 : null, 2), tip: "Index level against 100 on the first scrape day" },
+    { key: "mtd", label: "MTD", n: true, render: (r) => moveSpan(r.mtd, 3) },
+    { key: "se", label: "± s.e.", n: true, lo: true, render: (r) => f3(r.se) },
+    { key: "kc", label: "c", n: true, lo: true, render: (r) => f2(r.kc) },
+    { key: "days", label: "Days", n: true, lo: true },
+    { key: "date", label: "Latest", lo: true, render: (r) => shortDay(r.date) },
+  ], L, { key: "w", dir: -1, onRow: (r) => { state.hfLeaf = r.leaf; drawHfLeaf(F); $("#chart-hfleaf").scrollIntoView({ behavior: "smooth", block: "center" }); } });
+  drawHfLeaf(F);
+}
+function drawHfLeaf(F) {
+  const x = F.live.leaves_detail.find((r) => r.leaf === state.hfLeaf); if (!x) return;
+  const live = css("--c-live"), R = x.rows, d = R.map((r) => D(r[0]));
+  $("#hf-leafsel").value = x.leaf;
+  const dots = $("#chart-hfdots");
+  if (dots && dots.data) Plotly.restyle(dots, { "marker.color": [dots.data[0].customdata.map((c) => (c[5] === x.leaf ? C.actual : live))] });
+  mount("chart-hfleaf", [
+    { type: "bar", x: d, y: R.map((r) => r[2]), yaxis: "y2", marker: { color: C.slate }, opacity: 0.55, hovertemplate: "%{y:,} products<extra></extra>" },
+    { type: "scatter", mode: "lines", x: d, y: R.map((r) => (isNum(r[4]) ? r[3] + r[4] : null)), line: { width: 0 }, hoverinfo: "skip" },
+    { type: "scatter", mode: "lines", x: d, y: R.map((r) => (isNum(r[4]) ? r[3] - r[4] : null)), line: { width: 0 }, fill: "tonexty", fillcolor: "rgba(195,155,232,0.22)", hoverinfo: "skip" },
+    { type: "scatter", mode: "lines+markers", x: d, y: R.map((r) => r[3]), line: { color: live, width: 2.4 }, marker: { size: 6, color: live },
+      customdata: R.map((r) => [r[4], r[1], r[5]]), hovertemplate: "%{x|%a %d %b}<br>MTD %{y:+.3f}% ± %{customdata[0]:.3f}<br>Index %{customdata[1]:.2f} · c %{customdata[2]:.2f}<extra></extra>" }],
+  { xaxis: axis("Scrape day", { type: "date", tickformat: "%d %b", dtick: R.length > 12 ? null : 86400000 * (narrow() ? 3 : 2) }),
+    yaxis: axis("MTD change, %", { zeroline: true, tickformat: "+.2f" }),
+    yaxis2: { ...axis("Products matched", { rangemode: "tozero" }), overlaying: "y", side: "right", showgrid: false },
+    margin: { l: 56, r: 56, t: 10, b: 44 }, hovermode: "x unified", bargap: 0.4 }, 280);
+  $("#hf-leafnote").textContent = `${x.name} (${x.leaf}), ${wTxt(x.w)} of CPI: ${x.n.toLocaleString("en-GB")} products on ${shortDay(x.date)}, index ${f2(x.idx)} against 100 on ${shortDay(x.first)}, month to date ${sgp(x.mtd, 3)} ± ${f3(x.se)}, c ${f2(x.kc)}.`;
+}
+
+function drawHfNowcast(F, grid) {
+  const T = F.nowcast, live = css("--c-live");
+  if (!state.hfTarget || !T.find((t) => t.id === state.hfTarget)) state.hfTarget = (T.find((t) => t.head) || T[0]).id;
+  const card = el("figure", { class: "card half" }, [el("figcaption", {}, el("h3", {}, ["Model v model + live", el("span", { class: "ctx", text: "each day's last run" })])),
+    el("div", { class: "filters tight" }, el("div", { class: "segb", id: "seg-hftarget", "aria-label": "Target" })),
+    el("div", { class: "legend-row" }, [el("span", {}, [el("i", { style: "background:var(--signal)" }), "model: our call (80% band)"]), el("span", {}, [el("i", { style: `background:${live}` }), "model + live prices (experimental)"])]),
+    el("div", { class: "plot", id: "chart-hfnc" }), el("p", { class: "note", id: "hf-ncnote" })]);
+  const tcard = el("figure", { class: "card half" }, [el("figcaption", {}, el("h3", {}, ["Every target", el("span", { class: "ctx", text: `latest run, ${shortDay(T[0].date)}` })])),
+    el("div", { class: "tablewrap", id: "hf-nctable" }),
+    el("p", { class: "note", text: "Model + live updates each leaf the panels cover by how much of the month they have seen (c), weighing their sampling error and the leaf's own history; nothing is fitted to outcomes. Core measures that need a trimmed or median cut are not recomputed." })]);
+  grid.append(card, tcard);
+  const draw = () => {
+    const t = T.find((x) => x.id === state.hfTarget), R = t.rows, d = R.map((r) => D(r[0]));
+    mount("chart-hfnc", [
+      { type: "scatter", mode: "lines", x: d, y: R.map((r) => r[1] + 1.2816 * r[2]), line: { width: 0 }, hoverinfo: "skip" },
+      { type: "scatter", mode: "lines", x: d, y: R.map((r) => r[1] - 1.2816 * r[2]), line: { width: 0 }, fill: "tonexty", fillcolor: "rgba(125,147,255,0.16)", hoverinfo: "skip" },
+      { type: "scatter", mode: "lines+markers", x: d, y: R.map((r) => r[1]), line: { color: C.ours, width: 2.6 }, marker: { size: 7, color: C.ours }, hovertemplate: "Model %{y:.3f}<extra></extra>" },
+      { type: "scatter", mode: "lines+markers", x: d, y: R.map((r) => r[3]), line: { color: live, width: 2, dash: "dash" }, marker: { size: 7, color: live, symbol: "diamond" }, hovertemplate: "Model + live %{y:.3f}<extra></extra>" }],
+    { xaxis: axis("Run date", { type: "date", tickformat: "%d %b", dtick: R.length > 14 ? null : 86400000 }), yaxis: axis(`${t.label}, ${t.unit}`), hovermode: "x unified" }, 280);
+    $("#hf-ncnote").textContent = `${R.length} archived run${R.length === 1 ? "" : "s"} so far. Latest: model ${val(t.model, t.unit)}, model + live ${val(t.live, t.unit)} (${sg(t.diff, 3)} pp). The model is our call; model + live is not.`;
+  };
+  segb("seg-hftarget", T.map((t) => [t.id, cutLabel(`${t.label} ${t.unit.replace("% ", "")}`, 22)]), state.hfTarget, (v) => { state.hfTarget = v; draw(); });
+  draw();
+  sortable($("#hf-nctable"), [
+    { key: "label", label: "Target", render: (r) => el("span", {}, [r.label, unitTag(r.unit)]) },
+    { key: "model", label: "Model", n: true, render: (r) => el("b", { class: "pos", text: val(r.model, r.unit) }) },
+    { key: "live", label: "+ live", n: true, render: (r) => el("span", { class: "live", text: val(r.live, r.unit) }) },
+    { key: "diff", label: "Gap, pp", n: true, render: (r) => sg(r.diff, 3) },
+    { key: "sd", label: "Model sd", n: true, lo: true, render: (r) => f2(r.sd) },
+  ], T, { onRow: (r) => { state.hfTarget = r.id; segb("seg-hftarget", T.map((t) => [t.id, cutLabel(`${t.label} ${t.unit.replace("% ", "")}`, 22)]), state.hfTarget, (v) => { state.hfTarget = v; draw(); }); draw(); } });
+}
+
+function sparkLine(vals) {
+  const v = (vals || []).filter(isNum); if (v.length < 2) return el("span", { text: "" });
+  const lo = Math.min(...v), hi = Math.max(...v), w = 90, h = 18;
+  const d = v.map((x, i) => `${i ? "L" : "M"}${((i / (v.length - 1)) * (w - 2) + 1).toFixed(1)},${(h - 2 - ((x - lo) / (hi - lo || 1)) * (h - 4)).toFixed(1)}`).join("");
+  const host = el("span", { class: "sparkcell" });
+  host.innerHTML = `<svg viewBox="0 0 ${w} ${h}" aria-hidden="true"><path d="${d}"/></svg>`;
+  return host;
+}
+function drawHfDisplay(F, grid) {
+  const card = el("figure", { class: "card" }, [el("figcaption", {}, el("h3", {}, ["Related series", el("span", { class: "ctx", text: "no model reads these · for context" })])),
+    el("div", { class: "tablewrap", id: "hf-display", style: "max-height:420px" }),
+    el("p", { class: "note", text: "Series that could inform a leaf but that no validated model reads: candidates, related spot prices, travel counts. Single-retailer panel indices are left out (the pooled index of each leaf is above), as are station-level fuel feeds." })]);
+  grid.append(card);
+  sortable($("#hf-display"), [
+    { key: "label", label: "Series", render: (r) => (narrow() ? cutLabel(r.label, 22) : el("span", {}, [cutLabel(r.label, 48), unitTag(r.src)])) },
+    { key: "leaf_label", label: "Leaf", lo: true, render: (r) => cutLabel(r.leaf_label, 32) },
+    { key: "last", label: "Latest", lo: true, render: (r) => el("span", {}, [shortDay(r.last), " ", statusTag(r.status, r.age, false)]) },
+    { key: "last_v", label: "Value", n: true, render: (r) => el("span", {}, [fmtv(r.last_v), unitTag(r.unit)]) },
+    { key: "chg7", label: "7 days", n: true, render: (r) => moveSpan(r.chg7) },
+    { key: "mtd", label: "MTD avg", n: true, render: (r) => moveSpan(r.mtd) },
+    { key: "spark", label: "Weekly", lo: true, render: (r) => sparkLine(r.spark) },
+  ], F.display, { key: "label", dir: 1 });
+}
+
 // ── Growth ─────────────────────────────────────────────────────────────────
 render.growth = async function () {
   const G = await load("gdp.json"), n = G.nowcast;
@@ -605,7 +923,11 @@ const GLOSS = [["Nowcast", "Our estimate of a print for a period that has ended 
   ["Mode / P(mode)", "The most likely print at the agency's rounding and our chance of exactly that print."],
   ["P(> last)", "Our chance the print comes in above the last one: a direction call."],
   ["Calibration", "Whether the share of prints inside each stated band matches the band; the dashed diagonal is spot on."],
-  ["Brier score", "Mean squared error of probabilities against outcomes for strike contracts; lower is better."]];
+  ["Brier score", "Mean squared error of probabilities against outcomes for strike contracts; lower is better."],
+  ["Validated input", "A daily or weekly series a leaf model reads because it won walk-forward tests in an early and a late window. It feeds the call."],
+  ["Live-prices layer", "Experimental: daily indices from our own price panels, run beside the validated nowcast and scored live. Not our call."],
+  ["c (coverage)", "The share of the month's average-on-average change carried by the days the panels have seen; the weight the live layer gets grows with it."],
+  ["MTD average", "Month-to-date average of a price against last month's average: how a monthly index sees a daily price."]];
 render.method = async function () {
   $("#glossary").replaceChildren(...GLOSS.map(([t, d]) => el("dl", {}, [el("dt", { text: t }), el("dd", { text: d })])));
   const L = await load("lineage.json");
@@ -630,7 +952,7 @@ async function boot() {
   for (const t of $$(".tab")) t.addEventListener("click", () => showTab(t.dataset.tab));
   for (const b of $$("[data-goto]")) b.addEventListener("click", () => showTab(b.dataset.goto));
   renderTicker();
-  window.addEventListener("hashchange", () => { const was = state.tab + state.cc; readHash(); if (state.tab + state.cc !== was) showTab(state.tab); });
-  showTab(["monitor", "economies", "country", "growth", "record", "method"].includes(state.tab) ? state.tab : "monitor");
+  window.addEventListener("hashchange", () => { const key = () => state.tab + state.cc + state.hfView, was = key(); readHash(); if (key() !== was) showTab(state.tab); });
+  showTab(["monitor", "economies", "country", "hf", "growth", "record", "method"].includes(state.tab) ? state.tab : "monitor");
 }
 boot().catch((e) => { const m = $("#main"); if (m) m.prepend(el("p", { class: "explain", text: "The data did not load: " + e.message })); });
