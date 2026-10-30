@@ -42,16 +42,18 @@ const truthy = (v) => v === true || v === "True" || v === "true";
 // ── State and routing ───────────────────────────────────────────────────────
 const state = { tab: "monitor", cc: "US", target: null, look: "5", scope: "headline", region: "all", search: "",
   sort: { key: "release", dir: 1 }, ecoRegion: "all", window: "2015-01", rscope: "headline", gdph: "1", daily: null,
-  hfView: "all", hfWin: "92", hfTarget: null, hfLeaf: null };
+  hfView: "all", hfWin: "92", hfTarget: null, hfLeaf: null, gcc: "US", gtarget: null, gwin: null, gh: null };
 function readHash() {
   const p = new URLSearchParams(location.hash.slice(1));
   if (p.get("tab")) state.tab = p.get("tab");
   if (p.get("cc")) state.cc = p.get("cc").toUpperCase();
   if (state.tab === "hf") state.hfView = p.get("cc") ? "one" : "all";
+  if (state.tab === "growth") state.gcc = p.get("cc") ? p.get("cc").toUpperCase() : "US";
 }
 function writeHash() {
   const p = new URLSearchParams({ tab: state.tab });
   if (state.tab === "country" || (state.tab === "hf" && state.hfView === "one")) p.set("cc", state.cc);
+  if (state.tab === "growth" && state.gcc !== "US") p.set("cc", state.gcc);
   try { history.replaceState(null, "", "#" + p.toString()); } catch (_) { /* sandboxed */ }
 }
 
@@ -153,7 +155,7 @@ function showTab(tab) {
   window.scrollTo({ top: 0 });
 }
 function openEconomy(cc, page) {
-  if (page === "gdp") return showTab("growth");
+  if (page === "gdp") { state.gcc = cc || "US"; state.gtarget = null; return showTab("growth"); }
   state.cc = cc; state.target = null; showTab("country");
 }
 
@@ -175,7 +177,7 @@ render.monitor = function () {
   const sigN = econ.filter((e) => isNum(e.p_n) && e.p_n < 0.05 && e.skill_n > 0).length;
   const benches = b.filter((r) => num(r.skill_bench) !== null);
   const lp = BOARD.lastprint, inBand = lp.filter((r) => truthy(r.in_band)).length;
-  $("#hero-sub").textContent = `Our call for the next CPI print in ${econ.length} economies and the next US GDP print, built bottom-up from the widest net of public prices and data we can find, every input dated by when it was published. ${nextR ? `Next up: ${nextR.economy} ${nextR.label} on ${longDay(nextR.release)}, where we have ${val(num(nextR.nowcast), nextR.unit)}${nextR.unit}.` : ""}`;
+  $("#hero-sub").textContent = `Our call for the next CPI print in ${econ.length} economies and the next GDP print, built bottom-up from the widest net of public prices and data we can find, every input dated by when it was published. ${nextR ? `Next up: ${nextR.economy} ${nextR.label} on ${longDay(nextR.release)}, where we have ${val(num(nextR.nowcast), nextR.unit)}${nextR.unit}.` : ""}`;
   $("#kpis").replaceChildren(
     tile("Next release", nextR ? dayFmt(nextR.release).replace(",", "") : "—", "", nextR ? `${nextR.cc} ${nextR.label} · ours ${val(num(nextR.nowcast), nextR.unit)}` : ""),
     tile("Live nowcasts", String(b.length), "targets", `${econ.length} economies · CPI and GDP`),
@@ -839,7 +841,180 @@ function drawHfDisplay(F, grid) {
 }
 
 // ── Growth ─────────────────────────────────────────────────────────────────
+// Every GDP target on one board, then one economy: the US view (RTDSM engine, Kalshi reference) or the
+// periodic-engine view (monthly and quarterly targets, AR-based candidates, the input gate).
+const gPeriod = (p) => (/^\d{4}Q\d$/.test(p || "") ? p.replace("Q", " Q") : periodFmt(p));
+const rtTag = (rt) => el("span", { class: "tag " + (rt ? "rt" : "prt"), title: rt ? "Inputs and past prints as they stood on each day" : "No vintages exist: today's data cut by publication lags", text: rt ? "real time" : narrow() ? "pseudo-RT" : "pseudo-real-time" });
+const strTag = () => el("span", { class: "tag str", title: "An agency's own early reading of the target, or its monthly measure that adds up to the quarter: exempt from the significance test, must not lose in either window", text: "structural" });
+const hfTag = () => el("span", { class: "tag hft", title: "Reads a daily or weekly series", text: "HF" });
+const isAR = (r) => r.cc !== "US" && r.blend.length === 1 && r.blend[0] === "ar";
+const sigTag = (p) => (isNum(p) ? el("span", { class: "sig " + (p < 0.05 ? "yes" : "no"), text: p < 0.05 ? "sig" : "n.s." }) : null);
 render.growth = async function () {
+  let B = null;
+  try { B = await load("gdp_board.json"); } catch (_) { B = null; }
+  $("#gdp-explain").hidden = !B;
+  if (!B) { $("#gdp-board").closest(".grid").hidden = true; $("#gdp-picker").hidden = true; state.gcc = "US"; return showGdpEconomy(null); }
+  const rows = B.board, ecos = B.economies;
+  if (!ecos.includes(state.gcc)) state.gcc = "US";
+  const nPseudo = new Set(rows.filter((r) => !r.real_time).map((r) => r.cc)).size;
+  const hfT = rows.reduce((s, r) => s + (r.hf_tested || 0), 0), hfP = rows.reduce((s, r) => s + (r.hf_passed || 0), 0);
+  $("#gdpall-sub").textContent = `Our call for the next GDP print in ${ecos.length} economies: ${rows.length} targets, monthly and quarterly, each scored against an autoregression, last period's print and the agency's own early estimate where it publishes one.`;
+  $("#gdp-explain").replaceChildren(el("b", { text: "How to read it. " }),
+    "Targets marked ", rtTag(true), " are built from every input as it stood on the day; ", rtTag(false), ` (${nPseudo === 1 ? "one economy" : nPseudo + " economies"}: Norway, Sweden) use today's data cut by publication lags because no vintages exist. A model marked `, strTag(),
+    " reads the agency's own preview of the same print, or the monthly measure that adds up to the quarter; that rule was set after the 2025-26 holdout was computed, so Canada's and Mexico's holdout figures are not clean out-of-sample evidence. ",
+    el("b", { text: `High-frequency inputs: ${hfT} tested outside the US, ${hfP} passed.` }), hfP ? "" : " They are scored and shown, not used.");
+  $("#gdpb-count").textContent = `${rows.length} targets · ${ecos.length} economies`;
+  sortable($("#gdp-board"), [
+    { key: "release", label: "Release", render: (r) => (narrow() ? shortDay(r.release) : el("span", {}, [dayFmt(r.release), daysTo(r.release) >= 0 ? el("span", { class: "unit", text: "T−" + daysTo(r.release) }) : null])) },
+    { key: "name", label: "Economy", render: (r) => el("span", {}, [ccTag(r.cc), el("span", { class: "nm-full", text: r.name }), narrow() ? el("span", { class: "unit", style: "margin:0", text: r.unit.replace("% ", "") }) : null]) },
+    { key: "label", label: "Target", lo: true, render: (r) => el("span", {}, [r.label, unitTag(r.unit)]) },
+    { key: "period", label: "Period", lo: true, render: (r) => gPeriod(r.period) },
+    { key: "nowcast", label: "Ours", n: true, render: (r) => el("span", {}, [el("b", { class: "pos", text: val(r.nowcast, r.unit) }), el("span", { class: "unit lo", text: `${f1(r.band_lo)} to ${f1(r.band_hi)}` })]), tip: "Our mean, then the 80% band" },
+    { key: "prev", label: "Previous", n: true, lo: true, render: (r) => (isNum(r.prev) ? f2(r.prev) : "—") },
+    { key: "bench", label: "Benchmark", lo: true, sortv: (r) => r.bench, render: (r) => (r.bench_name ? el("span", {}, [isNum(r.bench) ? val(r.bench, r.unit) : "not yet out", unitTag(r.bench_name)]) : "—") },
+    { key: "real_time", label: "Data", sortv: (r) => (r.real_time ? 1 : 0), render: (r) => rtTag(r.real_time) },
+    { key: "structural", label: "Blend", lo: true, sortv: (r) => r.blend.length, render: (r) => (r.cc === "US" ? "models" : el("span", {}, [r.blend.length > 1 ? `AR + ${r.blend.length - 1}` : "AR", r.structural.length ? " " : "", r.structural.length ? strTag() : null])) },
+    { key: "skill_ar", label: "Skill v AR", sortv: (r) => (isAR(r) ? null : r.skill_ar), render: (r) => (isAR(r) ? el("span", { class: "unit", style: "margin:0", title: "The blend is the AR alone", text: "= AR" }) : el("span", { title: `${r.skill_window}${r.n_skill ? ", " + r.n_skill + " periods" : ""}, ${r.skill_h} day${r.skill_h === 1 ? "" : "s"} before release` }, [meter(r.skill_ar, r.p_ar)])) },
+  ], rows, { key: "release", dir: 1, onRow: (r) => { state.gcc = r.cc; state.gtarget = r.target; writeHash(); drawGdpPicker(ecos, rows); showGdpEconomy(B); document.getElementById("gdp-picker").scrollIntoView({ behavior: "smooth", block: "start" }); } });
+  drawGdpPicker(ecos, rows);
+  await showGdpEconomy(B);
+};
+function drawGdpPicker(ecos, rows) {
+  const pick = $("#gdp-picker"); pick.replaceChildren();
+  for (const g of ["Americas", "Europe"]) {
+    const here = ecos.filter((cc) => (rows.find((r) => r.cc === cc) || {}).region === g);
+    if (!here.length) continue;
+    pick.append(el("span", { class: "grp", text: g }));
+    for (const cc of here) pick.append(el("button", { type: "button", "aria-pressed": String(cc === state.gcc), title: (rows.find((r) => r.cc === cc) || {}).name,
+      onclick: () => { state.gcc = cc; state.gtarget = null; writeHash(); drawGdpPicker(ecos, rows); showGdpEconomy(true); } }, cc));
+  }
+}
+async function showGdpEconomy(B) {
+  const us = state.gcc === "US";
+  $("#gdp-us").hidden = !us; $("#gdp-intl").hidden = us;
+  if (us) return drawGdpUS();
+  let F;
+  try { F = await load(`gdp/${state.gcc}.json`); } catch (_) { $("#gdpi-grid").replaceChildren(el("p", { class: "empty", text: "This economy's GDP feed did not load." })); return; }
+  if (F.cc !== state.gcc) return;
+  if (!state.gtarget || !F.targets.find((t) => t.id === state.gtarget)) state.gtarget = F.targets[0].id;
+  segb("seg-gdpi-target", F.targets.map((t) => [t.id, `${t.label} ${t.unit.replace("% ", "")}`]), state.gtarget, (v) => { state.gtarget = v; drawGdpIntl(F); });
+  $("#seg-gdpi-target").closest(".filters").hidden = F.targets.length < 2;
+  drawGdpIntl(F);
+}
+function drawGdpIntl(F) {
+  const T = F.targets.find((t) => t.id === state.gtarget), k = daysTo(T.release), n = narrow();
+  const acc = T.acc || [], ho = acc.filter((a) => a.window === "holdout").sort((a, b) => a.h - b.h), dev = acc.filter((a) => a.window === "dev_all").sort((a, b) => a.h - b.h);
+  const ref = ho[0] || dev[0];
+  const mlabel = (id) => (T.models.find((m) => m.id === id) || { label: id }).label;
+  const lines = [["80% range", `${f2(T.band_lo)} to ${f2(T.band_hi)}`, ""], ["Most likely print", String(T.mode ?? "—"), "at one decimal"],
+    ["Previous print", isNum(T.prev) ? f2(T.prev) : "—", T.known_through ? `GDP known to ${gPeriod(T.known_through)}` : ""]];
+  if (T.bench_name) lines.push([`${T.bench_name} · benchmark`, isNum(T.bench) ? val(T.bench, T.unit) : "not out yet", ""]);
+  lines.push(["Blend", T.blend.length ? T.blend.map(mlabel).join(" + ") : "—", T.rule ? `${T.rule} weights` : ""]);
+  if (ref && T.blend.length === 1 && T.blend[0] === "ar") lines.push(["Skill v AR", "= AR", "the blend is the AR alone"]);
+  else if (ref) lines.push([`Skill v AR, ${ref.window === "holdout" ? "holdout" : "development"} (${ref.n})`, spct(isNum(ref.ours) && isNum(ref.ar) ? 1 - ref.ours / ref.ar : null), isNum(ref.p_ar) ? `DM p ${f2(ref.p_ar)}` : ""]);
+  $("#gdpi-call").replaceChildren(
+    el("div", { class: "left" }, [el("div", { class: "who", text: `${F.region} · ${F.agency}` }), el("div", { class: "name", text: F.name }),
+      el("div", { class: "meta", text: `${T.label}, ${T.unit} · ${gPeriod(T.period)} · releases ${dayFmt(T.release)}${k >= 0 ? ` (in ${k} day${k === 1 ? "" : "s"})` : ""}` }),
+      el("div", { class: "big" }, [el("b", { text: val(T.nowcast, T.unit) }), el("span", { text: `± ${f2(T.sd)} · our call` })]),
+      el("div", { class: "tags" }, [rtTag(T.real_time), T.structural.length ? strTag() : null, el("span", { class: "meta", text: `Run ${T.as_of}` })])]),
+    el("div", { class: "right" }, el("div", { class: "lines" }, lines.map(([a, b, c]) => el("div", { class: "line" }, [el("span", { text: a }), el("b", {}, [b, c ? el("small", { text: c }) : null])])))));
+
+  const grid = $("#gdpi-grid"); grid.replaceChildren();
+  const card = (title, ctx, cls = "") => { const f = el("figure", { class: "card " + cls }, el("figcaption", {}, el("h3", {}, [title, ctx ? el("span", { class: "ctx", text: ctx }) : null]))); grid.append(f); return f; };
+  // what each model says
+  const M = T.models.map((m) => (m.id === T.bench_id || m.id === "advance_only" ? { ...m, label: `${T.bench_name || "Agency advance"} (benchmark)`, bench: true } : m)).sort((a, b) => a.nowcast - b.nowcast);
+  const fm = card("What each model says", `${T.unit} · this ${T.id === "monthly" ? "month" : "quarter"}`, "half");
+  fm.append(el("div", { class: "legend-row" }, [el("span", {}, [el("i", { style: "background:var(--signal)" }), "in the blend"]), el("span", {}, [el("i", { style: "background:var(--slate)" }), "scored, not adopted"]), el("span", {}, [el("i", { style: "background:var(--c-naive)" }), "naive"])].concat(T.bench_name ? [el("span", {}, [el("i", { style: "background:var(--c-bench)" }), "benchmark"])] : [])),
+    el("div", { class: "plot", id: "chart-gdpi-models" }),
+    el("p", { class: "note", text: `Each candidate adds one motivated input to its base and joins the blend only if it beats the base in an early and a late window with a Diebold-Mariano p below 0.10 (structural models: no worse in either window). HF = reads a daily or weekly series; * = reads a pseudo-real-time input.` }));
+  const flags = (m) => [m.structural ? "structural" : "", m.hf ? "HF" : "", m.pseudo_input ? "*" : ""].filter(Boolean).join(" ");
+  const lo = Math.min(0, ...M.map((m) => m.nowcast)), hi = Math.max(0, ...M.map((m) => m.nowcast)), pad = (hi - lo || 1) * (n ? 0.9 : 0.5);
+  mount("chart-gdpi-models", [{ type: "bar", orientation: "h", x: M.map((m) => m.nowcast), y: M.map((_, i) => i),
+    marker: { color: M.map((m) => (m.w > 0 ? C.ours : m.bench ? C.bench : m.id === "naive" ? C.naive : C.slate)) },
+    text: M.map((m) => `${f2(m.nowcast)}${m.w > 0 ? " · w " + f2(m.w) : ""}`), textposition: "outside", cliponaxis: false, textfont: { family: COND, size: 12, color: C.ink2 },
+    customdata: M.map((m) => [m.label, m.reads || "the target's own history", m.tested ? (m.pass ? "adopted" : "not adopted") : "base", isNum(m.dm_p) ? f3(m.dm_p) : "—"]),
+    hovertemplate: "%{customdata[0]}: %{x:.2f}<br>Reads %{customdata[1]}<br>Test: %{customdata[2]}, DM p %{customdata[3]}<extra></extra>" }],
+  { xaxis: axis(`Nowcast, ${T.unit}`, { zeroline: true, zerolinewidth: 2, range: [lo - pad * (lo < 0 ? 1 : 0.2), hi + pad] }),
+    yaxis: axis("", { tickvals: M.map((_, i) => i), ticktext: M.map((m) => `${cutLabel(m.label, n ? 18 : 30)}${flags(m) ? " · " + flags(m) : ""}`), tickfont: { family: COND, size: n ? 11 : 12, color: C.ink2 } }),
+    margin: { l: 10, r: 16, t: 6, b: 44 }, bargap: 0.3,
+    shapes: [{ type: "line", x0: T.nowcast, x1: T.nowcast, yref: "paper", y0: 0, y1: 1, line: { color: C.actual, width: 2 } }],
+    annotations: [{ x: T.nowcast, yref: "paper", y: 1.02, yanchor: "bottom", text: "blend " + f2(T.nowcast), showarrow: false, font: { family: COND, size: 12, color: C.actual } }] }, Math.max(260, M.length * 24 + 70));
+
+  // accuracy by horizon
+  const fa = card("Accuracy by horizon", "RMSE pp · days before release", "half");
+  const tools = el("div", { class: "segb", id: "seg-gdpi-win", "aria-label": "Window" }); fa.querySelector("figcaption").append(el("div", { class: "card-tools" }, tools));
+  const leg = [el("span", {}, [el("i", { style: "background:var(--signal)" }), "ours"]), el("span", {}, [el("i", { style: "background:var(--slate)" }), "AR"]), el("span", {}, [el("i", { class: "dash" }), "naive (last print)"])];
+  if (T.bench_name) leg.push(el("span", {}, [el("i", { style: "background:var(--c-bench)" }), T.bench_name + " (benchmark)"]));
+  fa.append(el("div", { class: "legend-row" }, leg), el("div", { class: "plot", id: "chart-gdpi-acc" }), el("div", { class: "tablewrap", id: "gdpi-acc" }), el("p", { class: "note", id: "gdpi-acc-note" }));
+  if (!state.gwin || !acc.some((a) => a.window === state.gwin)) state.gwin = ho.length ? "holdout" : "dev_all";
+  const drawAcc = () => {
+    const A = acc.filter((a) => a.window === state.gwin).sort((a, b) => b.h - a.h), xl = A.map((a) => `${a.h} day${a.h === 1 ? "" : "s"}`);
+    const tr = [{ type: "bar", x: xl, y: A.map((a) => a.ours), marker: { color: C.ours }, hovertemplate: "Ours %{y:.3f}<extra></extra>" },
+      { type: "bar", x: xl, y: A.map((a) => a.ar), marker: { color: C.slate }, hovertemplate: "AR %{y:.3f}<extra></extra>" }];
+    if (T.bench_name && A.some((a) => isNum(a.bench) && a.n_bench >= 5)) tr.push({ type: "bar", x: xl, y: A.map((a) => (a.n_bench >= 5 ? a.bench : null)), marker: { color: C.bench }, customdata: A.map((a) => [a.ours_on_bench, a.n_bench]), hovertemplate: `${T.bench_name} %{y:.3f} (ours on the same %{customdata[1]} periods %{customdata[0]:.3f})<extra></extra>` });
+    tr.push({ type: "scatter", mode: "markers", x: xl, y: A.map((a) => a.naive), marker: { symbol: "line-ew-open", size: 30, color: C.naive, line: { color: C.naive, width: 2 } }, hovertemplate: "Naive %{y:.3f}<extra></extra>" });
+    mount("chart-gdpi-acc", tr, { barmode: "group", bargap: 0.25, xaxis: axis("Days before the release", { type: "category" }), yaxis: axis(`RMSE, pp of ${T.unit.replace("% ", "")}`, { rangemode: "tozero" }), hovermode: "x unified" }, 280);
+    const pv = (p) => el("span", { class: isNum(p) && p < 0.05 ? "psig" : "", text: f3(p) });
+    const cols = [{ key: "h", label: "Days", n: true }, { key: "n", label: "n", n: true, lo: true },
+      { key: "ours", label: "Ours", n: true, render: (r) => el("b", { class: "pos", text: f3(r.ours) }) },
+      { key: "ar", label: "AR", n: true, render: (r) => f3(r.ar) }, { key: "p_ar", label: "p", n: true, render: (r) => pv(r.p_ar), tip: "Diebold-Mariano p, ours v AR" },
+      { key: "naive", label: "Naive", n: true, lo: true, render: (r) => f3(r.naive) }, { key: "p_naive", label: "p", n: true, lo: true, render: (r) => pv(r.p_naive), tip: "Diebold-Mariano p, ours v naive" }];
+    if (T.bench_name) cols.push({ key: "bench", label: "Bench (ours)", n: true, lo: true, render: (r) => (isNum(r.bench) ? `${f3(r.bench)} (${f3(r.ours_on_bench)}, n ${r.n_bench})` : "—"), tip: `${T.bench_name} on the periods it covers, and ours on the same periods` },
+      { key: "p_bench", label: "p", n: true, lo: true, render: (r) => pv(r.p_bench), tip: `Diebold-Mariano p, ours v ${T.bench_name}` });
+    sortable($("#gdpi-acc"), cols, A);
+    const caveat = (F.cc === "CA" || F.cc === "MX") && T.structural.length && state.gwin === "holdout" ? ` Not clean out of sample: the structural rule that admitted ${T.structural.map(mlabel).join(" and ")} was decided after this holdout was computed.` : "";
+    const flat = A.length > 1 && A.every((a) => a.ours === A[0].ours) ? " The blend is the AR alone here, so it does not change within the period." : "";
+    $("#gdpi-acc-note").textContent = `${state.gwin === "holdout" ? "Holdout: from 2025 to the latest print, computed once after every choice was fixed." : "Development: through the first quarter of 2025, walk-forward."} RMSE in points; lower is better. p is the Diebold-Mariano p-value (Harvey-Leybourne-Newbold) of our errors against that reference's, in volt below 0.05.${T.bench_name ? ` The benchmark is scored only on the periods it covers (bars from 5 periods).` : ""}${flat}${caveat}${T.real_time ? "" : " Pseudo-real-time: today's data cut by publication lags."}`;
+  };
+  segb("seg-gdpi-win", [["dev_all", "Development"], ["holdout", "Holdout"]].filter(([w]) => acc.some((a) => a.window === w)), state.gwin, (v) => { state.gwin = v; drawAcc(); });
+  drawAcc();
+
+  // we said, it printed
+  const H = T.history || [], hs = [...new Set(H.map((r) => r[1]))].sort((a, b) => b - a);
+  if (H.length) {
+    const fh = card("We said. It printed.", `${T.unit} · first print v our call`);
+    const t2 = el("div", { class: "segb", id: "seg-gdpi-h", "aria-label": "Days before release" }); fh.querySelector("figcaption").append(el("div", { class: "card-tools" }, t2));
+    const lg = [el("span", {}, [el("i", { style: "background:var(--volt)" }), "first print"]), el("span", {}, [el("i", { style: "background:var(--signal)" }), "ours (80% band)"]), el("span", {}, [el("i", { class: "dash" }), "AR"])];
+    if (T.bench_name) lg.push(el("span", {}, [el("i", { style: "background:var(--c-bench)" }), T.bench_name]));
+    fh.append(el("div", { class: "legend-row" }, lg), el("div", { class: "plot", id: "chart-gdpi-hist" }));
+    if (!hs.includes(+state.gh)) state.gh = String(hs[hs.length - 1]);
+    const drawH = () => {
+      const R = H.filter((r) => String(r[1]) === state.gh), x = R.map((r) => M_(r[0]));
+      const tr = [{ type: "scatter", mode: "lines", x, y: R.map((r) => r[3] + 1.2816 * r[4]), line: { width: 0 }, hoverinfo: "skip" },
+        { type: "scatter", mode: "lines", x, y: R.map((r) => r[3] - 1.2816 * r[4]), line: { width: 0 }, fill: "tonexty", fillcolor: "rgba(125,147,255,0.16)", hoverinfo: "skip" },
+        { type: "scatter", mode: "lines", x, y: R.map((r) => r[6]), line: { color: C.naive, width: 1.4, dash: "dot" }, hovertemplate: "AR %{y:.2f}<extra></extra>" }];
+      if (T.bench_name && R.some((r) => isNum(r[7]))) tr.push({ type: "scatter", mode: "lines+markers", x, y: R.map((r) => r[7]), line: { color: C.bench, width: 1.5 }, marker: { size: 4 }, connectgaps: false, hovertemplate: `${T.bench_name} %{y:.2f}<extra></extra>` });
+      tr.push({ type: "scatter", mode: "lines", x, y: R.map((r) => r[3]), line: { color: C.ours, width: 2.2 }, hovertemplate: "Ours %{y:.2f}<extra></extra>" },
+        { type: "scatter", mode: "markers", x, y: R.map((r) => r[2]), marker: { color: C.actual, size: T.id === "monthly" ? 5 : 7 }, hovertemplate: `%{x|${T.id === "monthly" ? "%b %Y" : "%b %Y (quarter end)"}}<br>First print %{y:.2f}<extra></extra>` });
+      mount("chart-gdpi-hist", tr, { xaxis: axis(T.id === "monthly" ? "Reference month" : "Reference quarter (end month)", { type: "date" }), yaxis: axis(T.unit), hovermode: "x unified" }, 320);
+    };
+    segb("seg-gdpi-h", hs.map((h) => [String(h), `${h} day${h === 1 ? "" : "s"}`]), state.gh, (v) => { state.gh = v; drawH(); });
+    drawH();
+    fh.append(el("p", { class: "note", text: `Each point is the nowcast made the stated number of days before the release with what was published by then${T.real_time ? "" : " (pseudo-real-time)"}, against the first print. Lockdown months with growth beyond the scoring threshold are left out, as in the scores.` }));
+  }
+
+  // every input we tested
+  if (T.gate.length) {
+    const hfG = T.gate.filter((g) => g.hf), hfPass = hfG.filter((g) => g.pass);
+    const fg = card("Every input we tested", `${T.gate.length} candidates · ${T.gate.filter((g) => g.pass).length} adopted`);
+    fg.append(el("p", { class: "explain", text: hfG.length ? `${hfG.length} candidate${hfG.length === 1 ? "" : "s"} read a high-frequency series (daily or weekly); ${hfPass.length ? hfPass.length + " passed" : "none has passed our test for GDP yet, so none is in the call"}.` : "No high-frequency series was tested for this target." }));
+    const wrap = el("div", { class: "tablewrap", id: "gdpi-gate", style: "max-height:520px" }); fg.append(wrap);
+    const rm = (a) => (a && isNum(a[0]) ? el("span", {}, [el("b", { class: a[0] < a[1] ? "pos" : "neg", text: f3(a[0]) }), ` v ${f3(a[1])}`, el("span", { class: "unit", text: "n " + (a[2] ?? "—") })]) : "—");
+    sortable(wrap, [
+      { key: "label", label: "Candidate", render: (g) => el("span", {}, [n ? cutLabel(g.label, 20) : g.label, g.structural ? " " : "", g.structural ? strTag() : null, g.hf ? " " : "", g.hf ? hfTag() : null]) },
+      { key: "reads", label: "Adds", lo: true, render: (g) => el("span", { style: "white-space:normal;display:inline-block;max-width:340px", text: (g.reads || "—") + (g.pseudo_input ? " *" : "") }) },
+      { key: "base_label", label: "Base", lo: true },
+      { key: "early", label: "Early RMSE", lo: true, sortv: (g) => g.early[0], render: (g) => rm(g.early) },
+      { key: "late", label: "Late RMSE", lo: true, sortv: (g) => g.late[0], render: (g) => rm(g.late) },
+      { key: "dm_p", label: "DM p", n: true, render: (g) => f3(g.dm_p) },
+      { key: "pass", label: "Result", sortv: (g) => (g.pass ? 1 : 0), render: (g) => el("span", { class: "chip " + (g.pass ? "in" : "out"), text: g.pass ? "adopted" : !isNum(g.dm_p) ? "too little data" : !g.wins_both ? "lost a window" : "not significant" }) },
+    ], T.gate, { key: "pass", dir: -1 });
+    fg.append(el("p", { class: "note", text: "Early and late: RMSE of the candidate v its base in the two development windows, on the periods where the candidate's input changed the forecast. DM p: Diebold-Mariano on one loss per period. * reads a pseudo-real-time input (today's data cut by publication lags), which can be tested but never enters a blend compared with a benchmark." }));
+  }
+}
+const M_ = (m) => new Date(String(m).slice(0, 7) + "-01T00:00:00");
+
+async function drawGdpUS() {
   const G = await load("gdp.json"), n = G.nowcast;
   const k = daysTo(n.release);
   $("#gdp-title").textContent = `US real GDP, ${String(n.quarter).replace("Q", " Q")}`;
@@ -952,7 +1127,7 @@ async function boot() {
   for (const t of $$(".tab")) t.addEventListener("click", () => showTab(t.dataset.tab));
   for (const b of $$("[data-goto]")) b.addEventListener("click", () => showTab(b.dataset.goto));
   renderTicker();
-  window.addEventListener("hashchange", () => { const key = () => state.tab + state.cc + state.hfView, was = key(); readHash(); if (key() !== was) showTab(state.tab); });
+  window.addEventListener("hashchange", () => { const key = () => state.tab + state.cc + state.hfView + state.gcc, was = key(); readHash(); if (key() !== was) showTab(state.tab); });
   showTab(["monitor", "economies", "country", "hf", "growth", "record", "method"].includes(state.tab) ? state.tab : "monitor");
 }
 boot().catch((e) => { const m = $("#main"); if (m) m.prepend(el("p", { class: "explain", text: "The data did not load: " + e.message })); });

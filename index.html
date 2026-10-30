@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>The Quant Barometer · Inflation and growth nowcasts</title>
 <link rel="icon" href="data:,">
-<meta name="description" content="The Quant Barometer: nowcasts of the next CPI and GDP print for 17 economies, every input dated by when it was published, scored in real time against last month's print, published benchmarks and prediction markets.">
+<meta name="description" content="The Quant Barometer: nowcasts of the next CPI and GDP print across the Americas, Europe, Asia and Africa, every input dated by when it was published, scored in real time against last month's print, published benchmarks and prediction markets.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet">
@@ -22,7 +22,7 @@
       <span class="mark" aria-hidden="true"></span>
       <div>
         <h1>The Quant <b>Barometer</b></h1>
-        <p class="sub">Inflation and growth nowcasts · 17 economies · point in time</p>
+        <p class="sub">Inflation and growth nowcasts · point in time</p>
       </div>
     </div>
     <div class="topbar-right"><div class="asof" id="freshness"></div></div>
@@ -55,7 +55,7 @@
     </div>
     <div class="sh-side">
       <button class="sh-link" type="button" data-goto="country"><b>Country →</b><span>One economy, every number</span></button>
-      <button class="sh-link" type="button" data-goto="growth"><b>Growth →</b><span>US GDP, live</span></button>
+      <button class="sh-link" type="button" data-goto="growth"><b>Growth →</b><span>GDP in eight economies</span></button>
       <button class="sh-link" type="button" data-goto="record"><b>Track record →</b><span>We say it. Then we check it.</span></button>
     </div>
   </div>
@@ -193,7 +193,26 @@
 <!-- ── Growth ──────────────────────────────────────────────────────────── -->
 <section id="tab-growth" class="panel" role="tabpanel" hidden>
   <div class="sh">
-    <div class="sh-main"><span class="kicker">Growth · BEA advance estimate</span><h2 class="sh-title" id="gdp-title">US real GDP</h2>
+    <div class="sh-main"><span class="kicker">Growth</span><h2 class="sh-title">GDP, called before it prints.</h2>
+      <p class="sh-sub" id="gdpall-sub"></p></div>
+  </div>
+  <p class="explain wide" id="gdp-explain"></p>
+  <div class="grid">
+    <figure class="card"><figcaption><h3>Every GDP target <span class="ctx" id="gdpb-count"></span></h3></figcaption>
+      <div class="tablewrap" id="gdp-board" style="max-height:640px"></div>
+      <p class="note">Sorted by release date. <b>Ours</b> is our mean with the 80% band. <b>Benchmark</b> is the agency's own early reading of the same print where one exists (Statistics Canada's advance estimate, INEGI's IOAE) or GDPNow for the US: a reference we score against, never an input. <b>Data</b>: real time means every input and every past print is taken as it stood on the day; pseudo-real-time (Norway, Sweden) means today's data cut by publication lags, because no vintages exist. <b>Skill v AR</b> = 1 − our RMSE ÷ an autoregression's at the shortest horizon, in the holdout from 2025 (US: 2010-26); the volt mark means Diebold-Mariano p &lt; 0.05. Select a row to open the economy.</p></figure>
+  </div>
+  <div class="picker" id="gdp-picker" aria-label="Economy"></div>
+
+  <div id="gdp-intl" hidden>
+    <div class="call" id="gdpi-call"></div>
+    <div class="filters"><span class="filter-label">Target</span><div class="segb" id="seg-gdpi-target" aria-label="Target"></div></div>
+    <div class="grid" id="gdpi-grid"></div>
+  </div>
+
+  <div id="gdp-us">
+  <div class="sh">
+    <div class="sh-main"><span class="kicker">United States · BEA advance estimate</span><h2 class="sh-title" id="gdp-title">US real GDP</h2>
       <p class="sh-sub" id="gdp-sub"></p></div>
   </div>
   <section class="kpis" id="gdp-kpis" aria-label="GDP headline figures"></section>
@@ -216,6 +235,7 @@
       <div class="legend-row"><span><i style="background:var(--volt)"></i>advance print</span><span><i style="background:var(--signal)"></i>ours</span><span><i style="background:var(--c-bench)"></i>GDPNow</span><span><i style="background:var(--c-bench2)"></i>NY Fed</span></div>
       <div class="plot" id="chart-gdphist"></div>
       <p class="note">2020 Q2 and Q3 (−32.9 and +33.1) are left off so the other quarters can be read.</p></figure>
+  </div>
   </div>
 </section>
 
@@ -247,7 +267,8 @@
       <h3>High-frequency inputs and live prices</h3>
       <p>A leaf model reads a daily or weekly series (pump prices, wholesale fuel, day-ahead power, exchange rates) only once that series has won walk-forward in both an early and a late window; those are the <strong>validated</strong> inputs, and they feed the call. Since October 2026 we also scrape daily prices from retailers, travel sites and car listings and chain them into one index per CPI leaf. That <strong>live-prices layer</strong> has no history to test, so it is <strong>experimental</strong>: a second run updates each covered leaf by the share of the month the panels have seen, is archived beside the validated nowcast and is scored once the prints are out. It is not our call and will not become part of it without a record.</p>
       <h3>GDP</h3>
-      <p>Bridge equations from monthly hard data, a component bridge by expenditure and a mixed-frequency dynamic factor model refitted at every decision, on Philadelphia Fed real-time vintages and Census first prints. High-frequency series (claims, withheld taxes, fuel, rail, air travel) enter as partial months. No market data at all.</p>
+      <p>In the US: bridge equations from monthly hard data, a component bridge by expenditure and a mixed-frequency dynamic factor model refitted at every decision, on Philadelphia Fed real-time vintages and Census first prints. High-frequency series (claims, withheld taxes, fuel, rail, air travel) enter as partial months. No market data at all.</p>
+      <p>Elsewhere (the UK, Canada, Mexico, Germany, the euro area, Norway, Sweden): monthly and quarterly targets, each with an AR base and candidate models that add one motivated input at a time. A candidate joins the blend only if it beats its base in an early and a late development window and its Diebold-Mariano p-value is below 0.10. An agency's own early reading of the same target, or its monthly measure that adds up to the quarter, is <strong>structural</strong>: it skips the significance test but must still not lose in either window. That exemption was decided after the 2025-26 holdout had been computed, so the Canada and Mexico holdout figures are not clean out-of-sample evidence; those models are judged on their live record. Norway and Sweden publish no vintages, so their targets are <strong>pseudo-real-time</strong>: today's data cut by publication lags. No high-frequency input (electricity demand, job postings, port calls, truck tolls, rail, card spending) has passed the test for GDP outside the US yet; they are scored and shown, not used.</p>
       <h3>Not overfitting</h3>
       <p>New features must be motivated before they are tested and must win walk-forward in both an early and a late window; the final stretch from July 2025 is a frozen holdout, run once. We report significance (Diebold-Mariano) beside every skill number, and the calibration charts show whether the stated uncertainty is honest.</p>
     </div></figure>

@@ -116,3 +116,12 @@
 .kpis .tile .delta, .lede-row .tile .delta { grid-column: 1 / -1; white-space: normal; margin-top: 4px; }
 .lede-row .tile { flex: 1 1 140px; }
 @media (max-width: 640px) { .nm-full { display: none; } }
+
+/* ── Growth: data vintage, structural and high-frequency tags ── */
+.tag.rt { background: rgba(125,147,255,.16); color: var(--signal); }
+.tag.prt { background: rgba(255,201,77,.16); color: var(--warning); }
+.tag.str { background: var(--volt-soft); color: var(--volt); }
+.tag.hft { background: rgba(94,200,240,.16); color: var(--cool); }
+.call .tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+.call .tags .meta { margin-left: 4px; }
+.psig { color: var(--volt); font-weight: 700; }
