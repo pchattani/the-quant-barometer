@@ -66,23 +66,29 @@ function load(path) {
 }
 let META, BOARD;
 
-// ── Plotly theme (Broadcast tokens) ────────────────────────────────────────
+// ── Plotly theme (The Quant Macro tokens: the Governor's round 2) ──────────
+// Planes, ink and roles come from the CSS tokens (base.css is the Governor's sheet; barometer.css adds the
+// Barometer's roles), so the charts follow the stylesheet. Tick labels and hover figures are IBM Plex Mono.
 const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const C = {};
 function tokens() {
-  Object.assign(C, { ours: css("--signal"), actual: css("--volt"), naive: css("--c-naive"), bench: css("--c-bench"),
+  Object.assign(C, { ours: css("--signal"), actual: css("--c-actual"), naive: css("--c-naive"), bench: css("--c-bench"),
     bench2: css("--c-bench2"), market: css("--c-market"), hot: css("--hot"), cool: css("--cool"), grid: css("--grid"),
-    axis: css("--axis"), ink1: css("--ink-1"), ink2: css("--ink-2"), ink3: css("--ink-3"), slate: css("--slate"), card: css("--s-1") });
+    axis: css("--axis"), ink1: css("--ink-1"), ink2: css("--ink-2"), ink3: css("--ink-3"), slate: css("--slate"), card: css("--s-1"),
+    elev: css("--s-2"), border: css("--line-3"), live: css("--c-live"), lines: [1, 2, 3, 4, 5].map((i) => css("--c-line-" + i)) });
 }
 const COND = "Barlow Condensed, Barlow, Arial Narrow, sans-serif";
+const MONO = "IBM Plex Mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+// regions, in the order the pickers and filters list them
+const REGIONS = [["Americas", "Americas"], ["Europe", "Europe"], ["Asia-Pacific", "Asia-Pac"], ["Middle East and Africa", "MEA"]];
 function axis(title, extra = {}) {
   return { title: { text: title, font: { family: COND, size: 12, color: C.ink2 }, standoff: 8 }, gridcolor: C.grid, zerolinecolor: C.axis,
-    linecolor: C.axis, tickfont: { family: COND, size: 12, color: C.ink3 }, automargin: true, ...extra };
+    linecolor: C.axis, tickfont: { family: MONO, size: 11, color: C.ink3 }, automargin: true, ...extra };
 }
 function layout(o = {}) {
   return { paper_bgcolor: "rgba(0,0,0,0)", plot_bgcolor: "rgba(0,0,0,0)", font: { family: "Barlow, sans-serif", color: C.ink2, size: 12 },
     margin: { l: 56, r: 16, t: 10, b: 44 }, showlegend: false, hovermode: "closest",
-    hoverlabel: { bgcolor: "#000", bordercolor: C.actual, font: { family: "Barlow, sans-serif", color: "#fff", size: 12 } }, ...o };
+    hoverlabel: { bgcolor: C.elev, bordercolor: C.border, font: { family: MONO, color: C.ink1, size: 11.5 } }, ...o };
 }
 const CONFIG = { displaylogo: false, responsive: true, displayModeBar: "hover", modeBarButtonsToRemove: ["lasso2d", "select2d", "autoScale2d"] };
 function mount(id, traces, lay, height = 320) {
@@ -186,12 +192,38 @@ render.monitor = function () {
     tile("Last round in band", `${inBand}/${lp.length}`, "80% band", `expect about ${Math.round(lp.length * 0.8)}`),
     tile("Calibration", pct(BOARD.pooled.calib.find((c) => c.level === 0.8).actual), "in 80%", `${BOARD.pooled.n.toLocaleString("en-GB")} prints since 2015`));
   $("#mon-explain").innerHTML = "";
-  $("#mon-explain").append(el("b", { text: "What's that number? " }), "Every figure is a release-eve call: what we would have said the day before each print using only data published by then. Skill compares our errors with a simple rule (repeat last month's print) and with the published benchmark where one exists; the volt ", el("span", { class: "sig yes", text: "sig" }), " mark means the gap passes a Diebold-Mariano test at 5%.");
+  $("#mon-explain").append(el("b", { text: "What's that number? " }), "Every figure is a release-eve call: what we would have said the day before each print using only data published by then. Skill compares our errors with a simple rule (repeat last month's print) and with the published benchmark where one exists; the amber ", el("span", { class: "sig yes", text: "sig" }), " mark means the gap passes a Diebold-Mariano test at 5%.");
   segb("seg-scope", [["headline", "Headline"], ["all", "All targets"]], state.scope, (v) => { state.scope = v; drawBoard(); });
-  segb("seg-region", [["all", "All"], ["Americas", "Americas"], ["Europe", "Europe"], ["Asia-Pacific", "Asia-Pac"], ["GDP", "GDP"]], state.region, (v) => { state.region = v; drawBoard(); });
+  segb("seg-region", [["all", "All"], ...REGIONS, ["GDP", "GDP"]], state.region, (v) => { state.region = v; drawBoard(); });
   const s = $("#board-search"); s.oninput = () => { state.search = s.value.trim().toLowerCase(); drawBoard(); };
-  drawBoard(); drawHeat(); drawSkill(); drawLast(); drawCalib();
+  drawBoard(); drawHeat(); drawSkill(); drawLast(); drawCalib(); renderDigest();
 };
+
+// The month in five lines: built here from the board, the economies and the last-print scorecard.
+function renderDigest() {
+  const wrap = $("#week"), lede = $("#week-lede");
+  if (!wrap) return;
+  const E = BOARD.economies, b = BOARD.board, lp = BOARD.lastprint || [];
+  const yy = E.filter((e) => e.unit === "% y/y" && isNum(e.mean) && isNum(e.last));
+  const up = yy.filter((e) => e.mean > e.last + 0.05), down = yy.filter((e) => e.mean < e.last - 0.05);
+  const big = yy.slice().sort((a, c) => Math.abs(c.mean - c.last) - Math.abs(a.mean - a.last))[0];
+  const mover = E.filter((e) => isNum(e.move_7d)).sort((a, c) => Math.abs(c.move_7d) - Math.abs(a.move_7d))[0];
+  const due = b.filter((r) => isHead(r) && daysTo(r.release) >= 0 && daysTo(r.release) <= 7).sort((a, c) => (a.release < c.release ? -1 : 1));
+  const inBand = lp.filter((r) => truthy(r.in_band)).length, closer = lp.filter((r) => truthy(r.beat_naive)).length;
+  const miss = lp.filter((r) => isNum(num(r.z))).sort((a, c) => Math.abs(num(c.z)) - Math.abs(num(a.z)))[0];
+  lede.textContent = `${due.length} headline print${due.length === 1 ? " is" : "s are"} due in the next seven days. Our calls see headline inflation rising in ${up.length} economies and easing in ${down.length} of the ${yy.length} that publish it year on year. In the latest round, ${inBand} of ${lp.length} prints landed inside our 80% band and ${closer} were closer to our call than to the month before.`;
+  const tile = (k, v, p, cls = "", unit = "") => el("div", { class: "week-tile" }, [el("span", { class: "k", text: k }), el("span", { class: `v ${cls}`.trim() }, [v, unit ? el("small", { text: unit }) : null]), el("p", { text: p })]);
+  const open = (t, cc, page) => { t.classList.add("link"); t.setAttribute("role", "button"); t.tabIndex = 0; t.onclick = () => openEconomy(cc, page);
+    t.onkeydown = (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openEconomy(cc, page); } }; return t; };
+  const tiles = [];
+  if (big) tiles.push(open(tile("Biggest call", `${big.cc} ${sg(big.mean - big.last, 1)}`, `${big.name}: ${f1(big.last)}% last time, ${f1(big.mean)}% our call for ${periodFmt(big.period)}, out ${dayFmt(big.release)}. The largest expected change of any headline y/y print.`, big.mean >= big.last ? "up" : "down", "pp"), big.cc));
+  if (mover) tiles.push(open(tile("Moved most, 7 days", `${mover.cc} ${sg(mover.move_7d, 2)}`, `Our ${mover.label} call for ${periodFmt(mover.period)} (${mover.unit}) moved ${sg(mover.move_7d, 2)} points in a week and stands at ${val(mover.mean, mover.unit)}. The call moves when an input lands.`, mover.move_7d >= 0 ? "up" : "down", "pp"), mover.cc));
+  if (due.length) tiles.push(open(tile("Due this week", `${due.length} print${due.length === 1 ? "" : "s"}`, due.slice(0, 6).map((r) => `${r.family === "GDP" ? r.cc + " GDP" : r.cc} ${D(r.release).toLocaleDateString("en-GB", { weekday: "short" })} ${val(num(r.nowcast), r.unit)}`).join(" · ") + (due.length > 6 ? ` · and ${due.length - 6} more` : ""), "ours"), due[0].cc, due[0].page));
+  else tiles.push(tile("Due this week", "None", "No headline print is due in the next seven days."));
+  if (lp.length) tiles.push(miss ? open(tile("Latest round", `${inBand}/${lp.length}`, `inside our 80% band (about ${Math.round(lp.length * 0.8)} expected). Biggest miss: ${miss.economy} ${miss.label}, ${miss.period}, printed ${miss.actual} against our ${f2(num(miss.ours))} (z ${sg(num(miss.z))}).`, "", "in band"), miss.cc, miss.page) : tile("Latest round", `${inBand}/${lp.length}`, "inside our 80% band.", "", "in band"));
+  tiles.push(tile("Hotter or cooler", `${up.length} ↑ ${down.length} ↓`, `Economies where we expect the next headline y/y print above or below the last by more than 0.05 points; ${yy.length - up.length - down.length} hold.`));
+  wrap.replaceChildren(...tiles.slice(0, 5));
+}
 
 const moveOf = (r) => { if (!isHead(r) || r.family === "GDP") return null; const e = BOARD.economies.find((x) => x.cc === r.cc && x.headline === r.target); return e && isNum(e.move_7d) ? e.move_7d : null; };
 function drawBoard() {
@@ -200,7 +232,7 @@ function drawBoard() {
     && (!state.search || `${r.economy} ${r.cc} ${r.label} ${r.family}`.toLowerCase().includes(state.search)));
   $("#board-count").textContent = rows.length + (rows.length === 1 ? " target" : " targets");
   sortable($("#board"), [
-    { key: "release", label: "Release", render: (r) => el("span", {}, [dayFmt(r.release), daysTo(r.release) >= 0 ? el("span", { class: "unit", text: "T−" + daysTo(r.release) }) : null]) },
+    { key: "release", label: "Release", render: (r) => el("span", {}, [dayFmt(r.release), daysTo(r.release) >= 0 ? el("span", { class: "unit", text: "T−" + daysTo(r.release) }) : el("span", { class: "unit", text: "out", title: "Printed already: the next period's call starts once its first data are published" })]) },
     { key: "economy", label: "Economy", render: (r) => el("span", {}, [ccTag(r.cc), r.economy]) },
     { key: "label", label: "Print", render: (r) => el("span", {}, [r.label, unitTag(r.unit)]) },
     { key: "period", label: "Period", lo: true, render: (r) => periodFmt(r.period) },
@@ -227,9 +259,9 @@ function drawHeat() {
     line: { color: e.mean >= e.last ? C.hot : C.cool, width: 4 } }));
   traces.push({ type: "scatter", mode: "markers", x: rows.map((e) => e.last), y, name: "last print", marker: { color: C.naive, size: 9, symbol: "line-ns-open", line: { width: 3, color: C.naive } },
     hovertemplate: "%{y}<br>Last print %{x:.2f}%<extra></extra>" });
-  traces.push({ type: "scatter", mode: "markers+text", x: rows.map((e) => e.mean), y, name: "ours", marker: { color: C.ours, size: 11, line: { color: C.card, width: 2 } },
+  traces.push({ type: "scatter", mode: "markers+text", x: rows.map((e) => e.mean), y, name: "ours", marker: { color: C.ours, size: 11, line: { color: C.ink1, width: 1.5 } },
     text: rows.map((e) => e.mean.toFixed(1)), textposition: rows.map((e) => (e.mean >= e.last ? "middle right" : "middle left")),
-    textfont: { family: COND, size: 12, color: C.ink1 }, customdata: rows.map((e) => [e.last, e.period, e.sd]),
+    textfont: { family: MONO, size: 12, color: C.ink1 }, customdata: rows.map((e) => [e.last, e.period, e.sd]),
     hovertemplate: "%{y}<br>Ours %{x:.2f}% ± %{customdata[2]:.2f} for %{customdata[1]}<br>Last print %{customdata[0]:.2f}%<extra></extra>" });
   const ar = rows.find((e) => e.cc === "AR");
   const xs = rows.filter((e) => e.cc !== "AR").flatMap((e) => [e.mean, e.last]);
@@ -247,9 +279,9 @@ function drawSkill() {
   if (gdp) items.unshift({ name: "US GDP", k: num(gdp.skill_naive), p: null, b: num(gdp.skill_bench), pb: null, bn: "GDPNow", cc: "GDP" });
   const y = items.map((d) => d.name);
   mount("chart-skill", [
-    { type: "bar", orientation: "h", x: items.map((d) => d.k), y, marker: { color: items.map((d) => (d.k < 0 ? C.hot : C.ours)),
+    { type: "bar", orientation: "h", x: items.map((d) => d.k), y, marker: { color: items.map((d) => (d.k < 0 ? C.slate : C.ours)),
       line: { color: items.map((d) => (isNum(d.p) && d.p < 0.05 ? C.actual : "rgba(0,0,0,0)")), width: 2 } },
-      text: items.map((d) => spct(d.k)), textposition: "outside", textfont: { family: COND, size: 12, color: C.ink1 }, cliponaxis: false,
+      text: items.map((d) => spct(d.k)), textposition: "outside", textfont: { family: MONO, size: 12, color: C.ink1 }, cliponaxis: false,
       customdata: items.map((d) => [isNum(d.p) ? d.p.toFixed(3) : "n/a"]), hovertemplate: "%{y}<br>Skill v last print %{x:.0%}<br>DM p = %{customdata[0]}<extra></extra>" },
     { type: "scatter", mode: "markers", x: items.map((d) => d.b), y, marker: { symbol: "diamond", size: 12, color: C.bench, line: { color: C.card, width: 1.5 } },
       customdata: items.map((d) => [d.bn || "", isNum(d.pb) ? d.pb.toFixed(3) : "n/a"]), hovertemplate: "%{y}<br>Skill v %{customdata[0]} %{x:.0%}<br>DM p = %{customdata[1]}<extra></extra>" },
@@ -293,7 +325,7 @@ function drawCalib() {
 function calibChart(id, calib, h) {
   mount(id, [{ type: "scatter", mode: "lines", x: [0.4, 1], y: [0.4, 1], line: { color: C.naive, dash: "dash", width: 1.5 }, hoverinfo: "skip" },
     { type: "scatter", mode: "lines+markers+text", x: calib.map((c) => c.level), y: calib.map((c) => c.actual), line: { color: C.ours, width: 3 },
-      marker: { size: 10, color: C.ours }, text: calib.map((c) => pct(c.actual)), textposition: "top left", textfont: { family: COND, size: 12, color: C.ink1 },
+      marker: { size: 10, color: C.ours }, text: calib.map((c) => pct(c.actual)), textposition: "top left", textfont: { family: MONO, size: 12, color: C.ink1 },
       hovertemplate: "Band %{x:.0%}: %{y:.1%} of prints inside<extra></extra>" }],
   { xaxis: axis("Stated band (our uncertainty)", { tickformat: ".0%", range: [0.42, 1] }), yaxis: axis("Share of prints inside", { tickformat: ".0%", range: [0.4, 1.02] }),
     annotations: [{ x: 0.98, y: 0.98, text: "dashed line = spot on", showarrow: false, xanchor: "right", font: { family: COND, size: 12, color: C.ink3 } }] }, h);
@@ -307,18 +339,46 @@ render.economies = function () {
     el("span", { class: "rk", text: String(i + 1) }), el("span", { class: "nm", text: e.name }),
     el("span", { class: "val", text: spct(e.skill_n) }),
     el("span", { class: "sub", text: `${e.n} months · ${isNum(e.p_n) && e.p_n < 0.05 ? "significant" : "not significant"} · 80% band ${pct(e.cover80)}` })])));
-  segb("seg-eco-region", [["all", "All"], ["Americas", "Americas"], ["Europe", "Europe"], ["Asia-Pacific", "Asia-Pac"]], state.ecoRegion, (v) => { state.ecoRegion = v; drawMultiples(); });
+  segb("seg-eco-region", [["all", "All"], ...REGIONS], state.ecoRegion, (v) => { state.ecoRegion = v; drawMultiples(); });
   drawMultiples();
-  const pts = econ.filter((e) => e.unit === "% y/y" && e.cc !== "AR");
-  const lo = Math.min(...pts.flatMap((e) => [e.mean, e.last])) - 0.5, hi = Math.max(...pts.flatMap((e) => [e.mean, e.last])) + 0.5;
-  mount("chart-xs", [{ type: "scatter", mode: "lines", x: [lo, hi], y: [lo, hi], line: { color: C.naive, dash: "dash", width: 1.5 }, hoverinfo: "skip" },
+  $("#eco-title").textContent = `${econ.length} economies. One scale.`;
+  drawCrossSection(econ);
+};
+// Our call against the last print; an economy's last twelve first prints (each against the one before) trail
+// behind its dot only while it is hovered, or after a click pins it.
+function drawCrossSection(econ) {
+  // high-inflation economies (above 15% y/y) would squeeze everyone else into a corner: named off scale instead
+  const yy = econ.filter((e) => e.unit === "% y/y" && isNum(e.mean) && isNum(e.last));
+  const off = yy.filter((e) => Math.max(e.mean, e.last) > 15), pts = yy.filter((e) => !off.includes(e));
+  const trailOf = (e) => { const s = (e.spark || []).filter(isNum).slice(-13); return { x: s.slice(0, -1), y: s.slice(1) }; };
+  const all = pts.flatMap((e) => [e.mean, e.last]);
+  const lo = Math.min(...all) - 0.5, hi = Math.max(...all) + 0.5;
+  mount("chart-xs", [{ type: "scatter", mode: "lines", x: [lo - 100, hi + 100], y: [lo - 100, hi + 100], line: { color: C.naive, dash: "dash", width: 1.5 }, hoverinfo: "skip" },
     { type: "scatter", mode: "markers+text", x: pts.map((e) => e.last), y: pts.map((e) => e.mean), text: pts.map((e) => e.cc), textposition: "top center",
       textfont: { family: COND, size: 12, color: C.ink1 }, marker: { size: 12, color: pts.map((e) => (e.mean >= e.last ? C.hot : C.cool)), line: { color: C.card, width: 2 } },
-      customdata: pts.map((e) => [e.name, e.period]), hovertemplate: "%{customdata[0]} (%{customdata[1]})<br>Last %{x:.2f}% → ours %{y:.2f}%<extra></extra>" }],
+      customdata: pts.map((e) => [e.name, e.period]), hovertemplate: "%{customdata[0]} (%{customdata[1]})<br>Last %{x:.2f}% → ours %{y:.2f}%<extra></extra>" },
+    { type: "scatter", mode: "lines+markers", x: [], y: [], line: { color: C.ink2, width: 1.2 }, marker: { size: 5, color: C.ink2 }, hoverinfo: "skip" }],
   { xaxis: axis("Last print, % y/y", { range: [lo, hi] }), yaxis: axis("Our call, % y/y", { range: [lo, hi] }),
     annotations: [{ x: lo + 0.2, y: hi - 0.2, text: "we expect a rise", showarrow: false, xanchor: "left", font: { family: COND, size: 13, color: C.hot } },
-      { x: hi - 0.2, y: lo + 0.2, text: "we expect a fall", showarrow: false, xanchor: "right", font: { family: COND, size: 13, color: C.cool } }] }, 420);
-};
+      { x: hi - 0.2, y: lo + 0.2, text: "we expect a fall", showarrow: false, xanchor: "right", font: { family: COND, size: 13, color: C.cool } },
+      ...(off.length ? [{ xref: "paper", yref: "paper", x: 0.01, y: 0.93, xanchor: "left", yanchor: "top", showarrow: false, align: "left",
+        text: "Off scale: " + off.map((e) => `${e.name} ${e.last.toFixed(1)} → ${e.mean.toFixed(1)}`).join(", "), font: { family: COND, size: 12, color: C.ink3 } }] : [])] }, 420);
+  const node = $("#chart-xs");
+  let pinned = null, shown = null;
+  const show = (cc) => {
+    if (cc === shown) return;
+    shown = cc;
+    const e = pts.find((p) => p.cc === cc), t = e ? trailOf(e) : { x: [], y: [] };
+    // the trail runs into the economy's dot: the last print, then our call; the axes widen to hold it while shown
+    const xs = e ? [...t.x, e.last] : [], ys = e ? [...t.y, e.mean] : [];
+    const a = Math.min(lo, ...xs, ...ys) - (e ? 0.3 : 0), z = Math.max(hi, ...xs, ...ys) + (e ? 0.3 : 0);
+    Plotly.update(node, { x: [xs], y: [ys] }, { "xaxis.range": [a, z], "yaxis.range": [a, z] }, [2]);
+  };
+  if (node.removeAllListeners) for (const k of ["plotly_hover", "plotly_unhover", "plotly_click"]) node.removeAllListeners(k);
+  node.on("plotly_hover", (ev) => { const p = ev.points && ev.points[0]; if (p && p.curveNumber === 1 && !pinned) show(pts[p.pointIndex].cc); });
+  node.on("plotly_unhover", () => { if (!pinned) show(null); });
+  node.on("plotly_click", (ev) => { const p = ev.points && ev.points[0]; if (!p || p.curveNumber !== 1) return; const cc = pts[p.pointIndex].cc; pinned = pinned === cc ? null : cc; shown = undefined; show(pinned); });
+}
 function sparkSvg(vals, last, mean) {
   const v = vals.filter(isNum); if (v.length < 2) return el("span");
   const all = v.concat([mean]).filter(isNum), lo = Math.min(...all), hi = Math.max(...all), w = 130, h = 56, pad = 4;
@@ -329,7 +389,9 @@ function sparkSvg(vals, last, mean) {
   return host.firstElementChild;
 }
 function drawMultiples() {
-  const econ = BOARD.economies.filter((e) => state.ecoRegion === "all" || e.region === state.ecoRegion);
+  // ordered by our call: year-on-year targets first, highest first, then month-on-month ones
+  const econ = BOARD.economies.filter((e) => state.ecoRegion === "all" || e.region === state.ecoRegion)
+    .sort((a, b) => (isMom(a.unit) - isMom(b.unit)) || ((isNum(b.mean) ? b.mean : -1e9) - (isNum(a.mean) ? a.mean : -1e9)));
   $("#multiples").replaceChildren(...econ.map((e) => el("button", { class: "mini", type: "button", onclick: () => openEconomy(e.cc), title: `${e.name}: ${e.label}, ${e.unit}` }, [
     el("span", { class: "t", text: e.cc }),
     el("span", { class: "vals" }, [el("span", { class: "call-v", text: val(e.mean, e.unit) }), el("span", { class: "last-v", text: "last " + (e.last ?? "—") })]),
@@ -388,7 +450,7 @@ function drawCountryCharts(F, T) {
   mount("chart-dist", [{ type: "bar", x: xs, y: ds.map(([, p]) => p), marker: { color: xs.map((x) => (Math.abs(+x - T.mode) < 1e-9 ? C.actual : C.ours)) },
     hovertemplate: "Print %{x}" + (T.unit.includes("%") ? "%" : "") + "<br>Our chance %{y:.1%}<extra></extra>" }],
   { xaxis: axis(`Print, ${T.unit}`, { type: "category", tickangle: 0, nticks: 12 }), yaxis: axis("Our chance", { tickformat: ".0%" }), bargap: 0.18, shapes }, 300);
-  $("#dist-note").textContent = `Most likely print in volt. The chance of each print at the agency's rounding, from 20,000 joint draws of every component, rounded the way ${F.agency} rounds.`;
+  $("#dist-note").textContent = `Most likely print in amber. The chance of each print at the agency's rounding, from 20,000 joint draws of every component, rounded the way ${F.agency} rounds.`;
   // history
   const H = cut(T.history);
   $("#hist-ctx").textContent = `${T.unit} · release-eve nowcast v first print · ${H.length} months`;
@@ -459,7 +521,7 @@ function drawExtras(F, T) {
     const g = X.groups.slice().sort((a, b) => a.contribution_pp - b.contribution_pp);
     f.append(el("div", { class: "plot", id: "chart-groups" }));
     mount("chart-groups", [{ type: "bar", orientation: "h", x: g.map((r) => r.contribution_pp), y: g.map((r) => r.group), marker: { color: g.map((r) => (r.contribution_pp >= 0 ? C.hot : C.cool)) },
-      text: g.map((r) => `${sg(r.contribution_pp, 3)} · w ${f1(r.weight)}%`), textposition: "outside", cliponaxis: false, textfont: { family: COND, size: 12, color: C.ink2 },
+      text: g.map((r) => `${sg(r.contribution_pp, 3)} · w ${f1(r.weight)}%`), textposition: "outside", cliponaxis: false, textfont: { family: MONO, size: 12, color: C.ink2 },
       hovertemplate: "%{y}<br>%{x:.3f} pp<extra></extra>" }],
     { xaxis: axis("Contribution to the month's change, pp", { zeroline: true, zerolinewidth: 2, range: [Math.min(0, ...g.map((r) => r.contribution_pp)) * 1.9 - 0.004, Math.max(0, ...g.map((r) => r.contribution_pp)) * 1.6 + 0.004] }), yaxis: axis("", { tickfont: { family: COND, size: 12, color: C.ink2 } }), margin: { l: 170, r: 90, t: 6, b: 44 } }, Math.max(260, g.length * 30 + 60));
   }
@@ -521,7 +583,7 @@ function drawExtras(F, T) {
 // ── High frequency ─────────────────────────────────────────────────────────
 // The daily and weekly inputs behind the nowcasts (validated: read by a leaf model that passed the walk-forward
 // tests) and the experimental live-prices layer (daily indices from our scraped panels, run beside the call).
-const LINE_COLS = () => [C.actual, C.cool, C.hot, css("--leaf"), css("--warning"), C.ink2];
+const LINE_COLS = () => C.lines;
 const fmtv = (v) => (!isNum(v) ? "—" : Math.abs(v) >= 1000 ? Math.round(v).toLocaleString("en-GB") : v.toFixed(Math.abs(v) >= 100 ? 1 : Math.abs(v) >= 10 ? 2 : 3));
 const sgp = (v, d = 1) => (isNum(v) ? sg(v, d) + "%" : "—");
 const wTxt = (w) => (isNum(w) ? (w * 100).toFixed(w < 0.001 ? 3 : w < 0.01 ? 2 : 1) + "%" : "—");
@@ -539,9 +601,12 @@ function statusTag(status, age, superseded) {
 }
 function buildPicker(boxId, onPick) {
   const pick = document.getElementById(boxId); pick.replaceChildren();
-  for (const [g, label] of [["Americas", "Americas"], ["Europe", "Europe"], ["Asia-Pacific", "Asia-Pac"]]) {
-    pick.append(el("span", { class: "grp", text: label }));
-    for (const e of BOARD.economies.filter((x) => x.region === g)) pick.append(el("button", { type: "button", "aria-pressed": String(e.cc === state.cc), title: e.name, onclick: () => onPick(e.cc) }, e.cc));
+  // each region's label travels with its economies, so a label never ends a row on its own
+  for (const [g, label] of REGIONS) {
+    const here = BOARD.economies.filter((x) => x.region === g);
+    if (!here.length) continue;
+    pick.append(el("span", { class: "pgrp" }, [el("span", { class: "grp", text: label }),
+      ...here.map((e) => el("button", { type: "button", "aria-pressed": String(e.cc === state.cc), title: e.name, onclick: () => onPick(e.cc) }, e.cc))]));
   }
 }
 function openHf(cc) { state.cc = cc; state.hfView = "one"; state.hfTarget = null; state.hfLeaf = null; writeHash(); render.hf(); window.scrollTo({ top: 0 }); }
@@ -588,7 +653,7 @@ function drawHfAll(H) {
   const lim = Math.max(1, ...mv.map((m) => Math.abs(m.mtd)), ...mv.map((m) => (isNum(m.chg7) ? Math.abs(m.chg7) : 0)));
   mount("chart-hfmoves", [
     { type: "bar", orientation: "h", x: mv.map((m) => m.mtd), y: mv.map((_, i) => i), marker: { color: mv.map((m) => (m.mtd >= 0 ? C.hot : C.cool)) },
-      text: mv.map((m) => sgp(m.mtd)), textposition: "outside", cliponaxis: false, textfont: { family: COND, size: 12, color: C.ink1 },
+      text: mv.map((m) => sgp(m.mtd)), textposition: "outside", cliponaxis: false, textfont: { family: MONO, size: 12, color: C.ink1 },
       customdata: mv.map((m) => [m.name, m.label, m.src, fmtv(m.last_v), m.unit, m.leaf_label, wTxt(m.w), shortDay(m.last)]),
       hovertemplate: "%{customdata[0]} · %{customdata[1]} (%{customdata[2]})<br>Month-to-date average v last month %{x:+.1f}%<br>Last %{customdata[3]} %{customdata[4]} on %{customdata[7]}<br>Feeds %{customdata[5]}, %{customdata[6]} of CPI<extra></extra>" },
     { type: "scatter", mode: "markers", x: mv.map((m) => m.chg7), y: mv.map((_, i) => i), marker: { symbol: "diamond", size: 10, color: C.ink1, line: { color: C.card, width: 1.5 } },
@@ -701,7 +766,7 @@ function drawHfGroups(F) {
           name: cutLabel(s.label, 30), hovertemplate: `${cutLabel(s.label, 34)} %{y:,.4~f} ${s.unit}<extra></extra>` };
       });
       mount(id, tr, { xaxis: axis("Date", { type: "date", nticks: n ? 4 : 7 }), yaxis: axis(u, { tickformat: ",.4~f" }), hovermode: "x unified",
-        shapes: [{ type: "rect", xref: "x", yref: "paper", x0: ms, x1: endD, y0: 0, y1: 1, fillcolor: "rgba(212,255,58,0.07)", line: { width: 0 }, layer: "below" }],
+        shapes: [{ type: "rect", xref: "x", yref: "paper", x0: ms, x1: endD, y0: 0, y1: 1, fillcolor: "rgba(255,178,36,0.07)", line: { width: 0 }, layer: "below" }],
         annotations: [{ xref: "x", yref: "paper", x: ms, y: 1, xanchor: "left", yanchor: "top", text: "MTD", showarrow: false, font: { family: COND, size: 11, color: C.actual } }] }, 250);
     });
     if (!live.length) card.append(el("p", { class: "empty", text: "No current data for this leaf." }));
@@ -774,7 +839,7 @@ function drawHfLeaf(F) {
   mount("chart-hfleaf", [
     { type: "bar", x: d, y: R.map((r) => r[2]), yaxis: "y2", marker: { color: C.slate }, opacity: 0.55, hovertemplate: "%{y:,} products<extra></extra>" },
     { type: "scatter", mode: "lines", x: d, y: R.map((r) => (isNum(r[4]) ? r[3] + r[4] : null)), line: { width: 0 }, hoverinfo: "skip" },
-    { type: "scatter", mode: "lines", x: d, y: R.map((r) => (isNum(r[4]) ? r[3] - r[4] : null)), line: { width: 0 }, fill: "tonexty", fillcolor: "rgba(195,155,232,0.22)", hoverinfo: "skip" },
+    { type: "scatter", mode: "lines", x: d, y: R.map((r) => (isNum(r[4]) ? r[3] - r[4] : null)), line: { width: 0 }, fill: "tonexty", fillcolor: "rgba(79,216,168,0.2)", hoverinfo: "skip" },
     { type: "scatter", mode: "lines+markers", x: d, y: R.map((r) => r[3]), line: { color: live, width: 2.4 }, marker: { size: 6, color: live },
       customdata: R.map((r) => [r[4], r[1], r[5]]), hovertemplate: "%{x|%a %d %b}<br>MTD %{y:+.3f}% ± %{customdata[0]:.3f}<br>Index %{customdata[1]:.2f} · c %{customdata[2]:.2f}<extra></extra>" }],
   { xaxis: axis("Scrape day", { type: "date", tickformat: "%d %b", dtick: R.length > 12 ? null : 86400000 * (narrow() ? 3 : 2) }),
@@ -865,7 +930,7 @@ render.growth = async function () {
     el("b", { text: `High-frequency inputs: ${hfT} tested outside the US, ${hfP} passed.` }), hfP ? "" : " They are scored and shown, not used.");
   $("#gdpb-count").textContent = `${rows.length} targets · ${ecos.length} economies`;
   sortable($("#gdp-board"), [
-    { key: "release", label: "Release", render: (r) => (narrow() ? shortDay(r.release) : el("span", {}, [dayFmt(r.release), daysTo(r.release) >= 0 ? el("span", { class: "unit", text: "T−" + daysTo(r.release) }) : null])) },
+    { key: "release", label: "Release", render: (r) => (narrow() ? shortDay(r.release) : el("span", {}, [dayFmt(r.release), daysTo(r.release) >= 0 ? el("span", { class: "unit", text: "T−" + daysTo(r.release) }) : el("span", { class: "unit", text: "out", title: "Printed already: the next period's call starts once its first data are published" })])) },
     { key: "name", label: "Economy", render: (r) => el("span", {}, [ccTag(r.cc), el("span", { class: "nm-full", text: r.name }), narrow() ? el("span", { class: "unit", style: "margin:0", text: r.unit.replace("% ", "") }) : null]) },
     { key: "label", label: "Target", lo: true, render: (r) => el("span", {}, [r.label, unitTag(r.unit)]) },
     { key: "period", label: "Period", lo: true, render: (r) => gPeriod(r.period) },
@@ -884,9 +949,8 @@ function drawGdpPicker(ecos, rows) {
   for (const g of ["Americas", "Europe"]) {
     const here = ecos.filter((cc) => (rows.find((r) => r.cc === cc) || {}).region === g);
     if (!here.length) continue;
-    pick.append(el("span", { class: "grp", text: g }));
-    for (const cc of here) pick.append(el("button", { type: "button", "aria-pressed": String(cc === state.gcc), title: (rows.find((r) => r.cc === cc) || {}).name,
-      onclick: () => { state.gcc = cc; state.gtarget = null; writeHash(); drawGdpPicker(ecos, rows); showGdpEconomy(true); } }, cc));
+    pick.append(el("span", { class: "pgrp" }, [el("span", { class: "grp", text: g }), ...here.map((cc) => el("button", { type: "button", "aria-pressed": String(cc === state.gcc), title: (rows.find((r) => r.cc === cc) || {}).name,
+      onclick: () => { state.gcc = cc; state.gtarget = null; writeHash(); drawGdpPicker(ecos, rows); showGdpEconomy(true); } }, cc))]));
   }
 }
 async function showGdpEconomy(B) {
@@ -931,7 +995,7 @@ function drawGdpIntl(F) {
   const lo = Math.min(0, ...M.map((m) => m.nowcast)), hi = Math.max(0, ...M.map((m) => m.nowcast)), pad = (hi - lo || 1) * (n ? 0.9 : 0.5);
   mount("chart-gdpi-models", [{ type: "bar", orientation: "h", x: M.map((m) => m.nowcast), y: M.map((_, i) => i),
     marker: { color: M.map((m) => (m.w > 0 ? C.ours : m.bench ? C.bench : m.id === "naive" ? C.naive : C.slate)) },
-    text: M.map((m) => `${f2(m.nowcast)}${m.w > 0 ? " · w " + f2(m.w) : ""}`), textposition: "outside", cliponaxis: false, textfont: { family: COND, size: 12, color: C.ink2 },
+    text: M.map((m) => `${f2(m.nowcast)}${m.w > 0 ? " · w " + f2(m.w) : ""}`), textposition: "outside", cliponaxis: false, textfont: { family: MONO, size: 12, color: C.ink2 },
     customdata: M.map((m) => [m.label, m.reads || "the target's own history", m.tested ? (m.pass ? "adopted" : "not adopted") : "base", isNum(m.dm_p) ? f3(m.dm_p) : "—"]),
     hovertemplate: "%{customdata[0]}: %{x:.2f}<br>Reads %{customdata[1]}<br>Test: %{customdata[2]}, DM p %{customdata[3]}<extra></extra>" }],
   { xaxis: axis(`Nowcast, ${T.unit}`, { zeroline: true, zerolinewidth: 2, range: [lo - pad * (lo < 0 ? 1 : 0.2), hi + pad] }),
@@ -964,7 +1028,7 @@ function drawGdpIntl(F) {
     sortable($("#gdpi-acc"), cols, A);
     const caveat = (F.cc === "CA" || F.cc === "MX") && T.structural.length && state.gwin === "holdout" ? ` Not clean out of sample: the structural rule that admitted ${T.structural.map(mlabel).join(" and ")} was decided after this holdout was computed.` : "";
     const flat = A.length > 1 && A.every((a) => a.ours === A[0].ours) ? " The blend is the AR alone here, so it does not change within the period." : "";
-    $("#gdpi-acc-note").textContent = `${state.gwin === "holdout" ? "Holdout: from 2025 to the latest print, computed once after every choice was fixed." : "Development: through the first quarter of 2025, walk-forward."} RMSE in points; lower is better. p is the Diebold-Mariano p-value (Harvey-Leybourne-Newbold) of our errors against that reference's, in volt below 0.05.${T.bench_name ? ` The benchmark is scored only on the periods it covers (bars from 5 periods).` : ""}${flat}${caveat}${T.real_time ? "" : " Pseudo-real-time: today's data cut by publication lags."}`;
+    $("#gdpi-acc-note").textContent = `${state.gwin === "holdout" ? "Holdout: from 2025 to the latest print, computed once after every choice was fixed." : "Development: through the first quarter of 2025, walk-forward."} RMSE in points; lower is better. p is the Diebold-Mariano p-value (Harvey-Leybourne-Newbold) of our errors against that reference's, in amber below 0.05.${T.bench_name ? ` The benchmark is scored only on the periods it covers (bars from 5 periods).` : ""}${flat}${caveat}${T.real_time ? "" : " Pseudo-real-time: today's data cut by publication lags."}`;
   };
   segb("seg-gdpi-win", [["dev_all", "Development"], ["holdout", "Holdout"]].filter(([w]) => acc.some((a) => a.window === w)), state.gwin, (v) => { state.gwin = v; drawAcc(); });
   drawAcc();
@@ -1033,7 +1097,7 @@ async function drawGdpUS() {
   const m = G.models.slice().sort((a, b) => a.nowcast - b.nowcast);
   mount("chart-models", [{ type: "bar", orientation: "h", x: m.map((r) => r.nowcast), y: m.map((r) => NAMES[r.model] || r.model),
     marker: { color: m.map((r) => (r.weight > 0 ? C.ours : C.slate)) }, text: m.map((r) => `${r.nowcast.toFixed(2)}${r.weight > 0 ? ` · w ${r.weight.toFixed(2)}` : ""}`),
-    textposition: "outside", cliponaxis: false, textfont: { family: COND, size: 12, color: C.ink2 }, hovertemplate: "%{y}<br>%{x:.2f}%<extra></extra>" }],
+    textposition: "outside", cliponaxis: false, textfont: { family: MONO, size: 12, color: C.ink2 }, hovertemplate: "%{y}<br>%{x:.2f}%<extra></extra>" }],
   { xaxis: axis("Nowcast, % q/q SAAR", { rangemode: "tozero" }), yaxis: axis("", { tickfont: { family: COND, size: 12, color: C.ink2 } }), margin: { l: 190, r: 80, t: 6, b: 44 },
     shapes: [{ type: "line", x0: n.nowcast, x1: n.nowcast, yref: "paper", y0: 0, y1: 1, line: { color: C.actual, width: 2 } }],
     annotations: [{ x: n.nowcast, yref: "paper", y: 1.02, text: "blend " + f2(n.nowcast), showarrow: false, font: { family: COND, size: 12, color: C.actual } }] }, 360);

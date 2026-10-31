@@ -1,11 +1,20 @@
-/* The Quant Barometer: the Quant kit "Broadcast" (dark only), on top of base.css (the Governor's sheet,
-   kept verbatim so the family stays one system). Additions: the site accent, the economy picker, the
-   heat polarity (hotter red-orange, cooler cyan), significance marks, skill meters and the power list. */
+/* The Quant Barometer, part of The Quant Macro: on top of base.css, the Governor's round-2 sheet kept verbatim
+   (midnight navy planes, amber mark accent, IBM Plex Mono for figures that change, cobalt for "ours", hard
+   edges, dark only), so the macro family is one system. This sheet adds the Barometer's roles and parts:
+   inflation polarity as the Governor's hawk/dove (hotter red-orange, cooler cobalt), the first print in amber
+   (the Governor's volt), the reference series, the economy picker, significance marks, skill meters, the power
+   list, the month in five lines, and the high-frequency and growth tags.
+   Chart roles (validated with the dataviz checks on the #0d1526 card: every pairing that shares a chart has a
+   normal-vision dE >= 15 and a protan/deutan dE >= 8):
+     ours #7d93ff · first print #ffb224 · last print (naive, dotted) #6f7890 · benchmark #ff6a4d ·
+     second benchmark #3fd0c0 · experimental live prices #4fd8a8 · market reference ring #8e9ab0
+     line set for several inputs on one chart: #ffb224 #ff6a4d #f2f5fb #e070e0 #3fd0c0 */
 
 :root, :root[data-theme] {
-  --a-macro: #5ec8f0;               /* the site word: sky */
-  --hot: #ff6a4d; --cool: #5ec8f0; --hot-rgb: 255,106,77; --cool-rgb: 94,200,240;
-  --c-model: #7d93ff; --c-actual: #d4ff3a; --c-naive: #939bab; --c-bench: #ff6a4d; --c-bench2: #5ec8f0; --c-market: #8a93a6;
+  --hot: var(--hawk); --cool: var(--dove); --hot-rgb: var(--hawk-rgb); --cool-rgb: var(--dove-rgb);
+  --c-model: var(--signal); --c-actual: var(--amber); --c-naive: #6f7890; --c-bench: #ff6a4d; --c-bench2: #3fd0c0;
+  --c-market: #8e9ab0; --c-live: #4fd8a8; --c-live-rgb: 79,216,168;
+  --c-line-1: #ffb224; --c-line-2: #ff6a4d; --c-line-3: #f2f5fb; --c-line-4: #e070e0; --c-line-5: #3fd0c0;
 }
 
 /* ── Hero lede numbers and the "how to read" strip ─────────────────────── */
@@ -15,16 +24,17 @@
 /* ── Economy picker on the country tab ────────────────────────────────── */
 .picker { display: flex; flex-wrap: wrap; gap: 2px; margin: 0 0 14px; }
 .picker button { background: var(--block); color: var(--block-ink-2); border: 0; border-top: 3px solid var(--card-rule); padding: 7px 10px 6px; cursor: pointer; font: 400 20px/1 var(--font-display); letter-spacing: .03em; min-width: 52px; }
-.picker button:hover { color: #fff; border-top-color: var(--ink-3); }
+.picker button:hover { color: #fff; border-top-color: var(--ink-3); background: var(--block-2); }
 .picker button[aria-pressed="true"] { color: var(--volt-ink); background: var(--volt); border-top-color: var(--volt); }
+.picker .pgrp { display: flex; flex-wrap: wrap; gap: 2px; align-items: stretch; }
 .picker .grp { align-self: center; color: var(--ink-3); font: 700 11.5px var(--font-cond); letter-spacing: .1em; text-transform: uppercase; padding: 0 8px 0 12px; }
 
 /* ── Country head: the black block with the call ───────────────────────── */
 .call { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 2px; margin-bottom: var(--gap); }
 .call .left, .call .right { background: var(--block); color: var(--block-ink); padding: 18px 22px 16px; min-width: 0; }
-.call .left { clip-path: polygon(0 0, 100% 0, calc(100% - 40px) 100%, 0 100%); padding-right: 60px; background: linear-gradient(110deg, #10162a 0%, #000 70%); border-top: 5px solid var(--signal); }
+.call .left { clip-path: polygon(0 0, 100% 0, calc(100% - 40px) 100%, 0 100%); padding-right: 60px; background: linear-gradient(110deg, #111d3a 0%, var(--block) 70%); border-top: 5px solid var(--signal); }
 .call .right { border-top: 5px solid var(--card-rule); }
-.call .who { font: 700 13px/1.2 var(--font-cond); letter-spacing: .1em; text-transform: uppercase; color: var(--volt); }
+.call .who { font: 700 13px/1.2 var(--font-cond); letter-spacing: .1em; text-transform: uppercase; color: var(--amber); }
 .call .name { font: 400 clamp(2.6rem, 6vw, 4.6rem)/0.88 var(--font-display); letter-spacing: .01em; text-transform: uppercase; margin: 6px 0 4px; }
 .call .meta { color: var(--block-ink-3); font: 700 12.5px/1.4 var(--font-cond); letter-spacing: .06em; text-transform: uppercase; }
 .call .big { display: flex; align-items: baseline; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
@@ -33,12 +43,12 @@
 .call .lines { display: grid; gap: 8px; }
 .call .line { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: baseline; border-bottom: 1px solid var(--block-line); padding-bottom: 6px; }
 .call .line span { color: var(--block-ink-3); font: 700 12px var(--font-cond); letter-spacing: .08em; text-transform: uppercase; }
-.call .line b { font: 400 26px/1 var(--font-display); letter-spacing: .02em; font-variant-numeric: tabular-nums; }
-.call .line b small { font: 700 12px var(--font-cond); color: var(--block-ink-3); margin-left: 4px; letter-spacing: .04em; }
+.call .line b { font: 500 17px/1.1 var(--font-num); letter-spacing: 0; font-variant-numeric: tabular-nums; text-align: right; }
+.call .line b small { font: 700 12px var(--font-cond); color: var(--block-ink-3); margin-left: 6px; letter-spacing: .04em; text-transform: uppercase; }
 
 /* ── Significance and skill ────────────────────────────────────────────── */
 .sig { display: inline-block; font: 700 11px/16px var(--font-cond); letter-spacing: .06em; text-transform: uppercase; padding: 0 5px; margin-left: 5px; vertical-align: 1px; }
-.sig.yes { background: var(--volt); color: var(--volt-ink); }
+.sig.yes { background: var(--amber); color: var(--amber-ink); }
 .sig.no { background: var(--s-3); color: var(--ink-3); }
 .sig.neg { background: rgba(var(--hot-rgb), .18); color: var(--hot); }
 .meter { display: inline-grid; grid-template-columns: 76px auto auto; gap: 7px; align-items: center; vertical-align: middle; }
@@ -46,20 +56,25 @@
 .meter .trk::after { content: ""; position: absolute; left: 33.333%; top: -3px; bottom: -3px; width: 2px; background: var(--axis); }
 .meter .fill { position: absolute; top: 0; bottom: 0; }
 .meter .fill.p { background: var(--signal); } .meter .fill.n { background: var(--hot); }
-.meter .lab { font: 700 13px var(--font-cond); letter-spacing: .02em; font-variant-numeric: tabular-nums; min-width: 38px; }
+.meter .lab { font: 500 12.5px var(--font-num); font-variant-numeric: tabular-nums; min-width: 44px; }
 .up { color: var(--hot); } .down { color: var(--cool); } .pos { color: var(--signal); } .neg { color: var(--hot); }
 .cc { display: inline-block; font: 400 17px/1 var(--font-display); letter-spacing: .04em; background: var(--s-3); color: var(--ink-1); padding: 2px 5px 1px; margin-right: 8px; min-width: 30px; text-align: center; }
 .unit { color: var(--ink-3); font: 700 11.5px var(--font-cond); letter-spacing: .04em; text-transform: uppercase; margin-left: 6px; }
-.chip.in { background: rgba(125,147,255,.18); color: var(--signal); }
+.chip.in { background: var(--signal-soft); color: var(--signal); }
 .chip.out { background: rgba(var(--hot-rgb), .18); color: var(--hot); }
+td b.pos, td b, td .up, td .down { font-family: var(--font-num); font-weight: 500; }
+
+/* ── The month in five lines ───────────────────────────────────────────── */
+.week-tile .v.up { color: var(--hot); } .week-tile .v.down { color: var(--cool); } .week-tile .v.ours { color: var(--signal); }
+.week-tile .v small { font: 500 13px var(--font-num); color: var(--block-ink-3); margin-left: 6px; letter-spacing: 0; }
 
 /* ── The power list (black band) ───────────────────────────────────────── */
 .band { background: var(--block); padding: 16px 18px 12px; margin: 0 0 var(--gap); border-top: 5px solid var(--card-rule); }
-.band .kicker { background: var(--volt); color: var(--volt-ink); }
+.band .kicker { background: var(--amber); color: var(--amber-ink); }
 .band h3 { font: 400 clamp(2rem, 3.6vw, 3rem)/0.9 var(--font-display); text-transform: uppercase; color: #fff; margin: 0 0 12px; }
 .power { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 2px; }
 .prow { background: var(--block-2); padding: 10px 12px 9px; display: grid; grid-template-columns: 46px 1fr auto; gap: 2px 10px; align-items: center; cursor: pointer; border: 0; border-top: 3px solid var(--block-line); text-align: left; color: #fff; }
-.prow:hover { border-top-color: var(--volt); }
+.prow:hover { border-top-color: var(--amber); background: var(--block-3); }
 .prow .rk { grid-row: span 2; font: 400 40px/1 var(--font-display); color: transparent; -webkit-text-stroke: 1.5px var(--block-ink-3); text-align: center; }
 .prow .nm { font: 400 22px/1 var(--font-display); letter-spacing: .02em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .prow .val { grid-row: span 2; font: 400 30px/1 var(--font-display); color: var(--signal); font-variant-numeric: tabular-nums; }
@@ -67,20 +82,22 @@
 
 /* ── Small multiples: economies ────────────────────────────────────────── */
 .mini .call-v { font: 400 24px/1 var(--font-display); letter-spacing: .02em; color: var(--signal); font-variant-numeric: tabular-nums; }
-.mini .last-v { font: 700 11.5px var(--font-cond); letter-spacing: .03em; color: var(--ink-3); }
-.mini .line-a { fill: none; stroke: var(--volt); stroke-width: 1.4; }
+.mini .last-v { font: 500 11px var(--font-num); color: var(--ink-3); }
+.mini .line-a { fill: none; stroke: var(--amber); stroke-width: 1.4; }
 .mini .dot-o { fill: var(--signal); }
 
 /* ── Ticker: releases ahead ────────────────────────────────────────────── */
-.tick .call-t { font: 400 20px/1 var(--font-display); letter-spacing: .02em; color: var(--signal); }
+.tick .call-t { font: 500 15px/1 var(--font-num); color: var(--signal); }
 
-/* ── Segmented control built from buttons (no hidden radios) ───────────── */
+/* ── Segmented control built from buttons (no hidden radios); smaller in a chart's header ── */
 .segb { display: inline-flex; border: 2px solid var(--ink-1); overflow-x: auto; scrollbar-width: none; max-width: 100%; }
 .segb::-webkit-scrollbar { display: none; }
 .segb button { background: none; border: 0; padding: 6px 12px; cursor: pointer; color: var(--ink-2); font: 700 13px/1 var(--font-cond); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
 .segb button:hover { color: var(--ink-1); }
 .segb button[aria-pressed="true"] { background: var(--ink-1); color: var(--ink-inv); }
-.segb button:focus-visible, .picker button:focus-visible, .prow:focus-visible, .sh-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.card-tools .segb { border-width: 1.5px; }
+.card-tools .segb button { padding: 4px 9px; font-size: 12px; }
+.segb button:focus-visible, .picker button:focus-visible, .prow:focus-visible, .sh-link:focus-visible, .week-tile.link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 .legend-row { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--ink-3); font: 700 12px var(--font-cond); letter-spacing: .05em; text-transform: uppercase; margin: 0 0 6px; }
 .legend-row i { display: inline-block; width: 14px; height: 4px; margin-right: 6px; vertical-align: 3px; }
@@ -92,21 +109,21 @@
 @media (max-width: 900px) { .call { grid-template-columns: minmax(0, 1fr); } .call .left { clip-path: none; padding-right: 22px; } }
 @media (max-width: 760px) { .lo { display: none; } .power { grid-template-columns: minmax(0, 1fr); } }
 
-/* ── High frequency: validated inputs (volt, the data) and the experimental live layer (plum) ── */
-:root, :root[data-theme] { --c-live: #c39be8; }
-.tag.val { background: var(--volt-soft); color: var(--volt); }
-.tag.exp { background: rgba(195,155,232,.18); color: var(--c-live); }
+/* ── High frequency: validated inputs (amber, the data) and the experimental live layer (mint) ── */
+.tag.val { background: var(--amber-soft); color: var(--amber); }
+.tag.exp { background: rgba(var(--c-live-rgb), .16); color: var(--c-live); }
 .live { color: var(--c-live); }
 .legend-row i.dia { width: 9px; height: 9px; background: var(--ink-1); transform: rotate(45deg); vertical-align: 0; margin-left: 2px; }
 .legend-row.stats { text-transform: none; letter-spacing: .02em; font-size: 12.5px; gap: 4px 14px; }
 .legend-row.stats > span { color: var(--ink-2); }
-.legend-row.stats b { color: var(--ink-1); font-variant-numeric: tabular-nums; }
+.legend-row.stats b { color: var(--ink-1); font: 500 12.5px var(--font-num); }
 .legend-row.stats small { font: inherit; color: var(--ink-3); }
-.hf-sec { grid-column: 1 / -1; margin: 10px 0 0; border-top: 2px solid var(--ink-1); padding-top: 10px; }
+.legend-row.stats .up, .legend-row.stats .down { font-family: var(--font-num); font-weight: 500; }
+.hf-sec { grid-column: 1 / -1; margin: 10px 0 0; border-top: 2px solid var(--amber); padding-top: 10px; }
 .hf-sec h3 { font: 400 clamp(1.8rem, 3vw, 2.4rem)/0.95 var(--font-display); letter-spacing: .01em; text-transform: uppercase; color: var(--ink-1); }
 .hf-sec p { color: var(--ink-3); font: 500 13px/1.45 var(--font-ui); max-width: 62em; margin-top: 6px; }
 .hf-groups { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap); }
-.call .linkish { margin-top: 12px; background: none; border: 0; border-bottom: 2px solid var(--volt); color: var(--volt); padding: 0 0 2px; cursor: pointer; font: 700 13px var(--font-cond); letter-spacing: .08em; text-transform: uppercase; }
+.call .linkish { margin-top: 12px; background: none; border: 0; border-bottom: 2px solid var(--amber); color: var(--amber); padding: 0 0 2px; cursor: pointer; font: 700 13px var(--font-cond); letter-spacing: .08em; text-transform: uppercase; }
 .call .linkish:hover { color: #fff; border-bottom-color: #fff; }
 #hf-leafsel { max-width: min(100%, 240px); }
 .filters.tight { margin: 0 0 8px; }
@@ -118,10 +135,10 @@
 @media (max-width: 640px) { .nm-full { display: none; } }
 
 /* ── Growth: data vintage, structural and high-frequency tags ── */
-.tag.rt { background: rgba(125,147,255,.16); color: var(--signal); }
-.tag.prt { background: rgba(255,201,77,.16); color: var(--warning); }
-.tag.str { background: var(--volt-soft); color: var(--volt); }
-.tag.hft { background: rgba(94,200,240,.16); color: var(--cool); }
+.tag.rt { background: var(--signal-soft); color: var(--signal); }
+.tag.prt { background: rgba(255,209,102,.16); color: var(--warning); }
+.tag.str { background: var(--amber-soft); color: var(--amber); }
+.tag.hft { background: rgba(94,200,240,.16); color: var(--sky); }
 .call .tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
 .call .tags .meta { margin-left: 4px; }
-.psig { color: var(--volt); font-weight: 700; }
+.psig { color: var(--amber); font-weight: 700; }
