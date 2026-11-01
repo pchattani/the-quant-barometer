@@ -15,7 +15,9 @@
     { key: 'surveyor',  label: 'Real estate', site: 'The Quant Surveyor', url: PUB + 'the-quant-surveyor/', note: 'Global residential real estate',
       icon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 9.5 10 3.5l7 6"/><path d="M5 8.2V16.5h10V8.2"/><path d="M8.5 16.5v-4h3v4"/></svg>' },
     { key: 'desk',      label: 'Strategies', site: 'The Quant Desk', url: PUB + 'the-quant-desk/', note: 'Systematic macro strategies by style',
-      icon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 14.5 7 9.5l3.5 3 3-5 4 3"/><path d="M2.5 17h15"/></svg>' }
+      icon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 14.5 7 9.5l3.5 3 3-5 4 3"/><path d="M2.5 17h15"/></svg>' },
+    { key: 'ledger',    label: 'Equity factors', site: 'The Quant Ledger', url: PUB + 'the-quant-ledger/', note: 'Equity long/short factors, country by style',
+      icon: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3.5h12v13H4z"/><path d="M7 7.5h6M7 10.5h6M7 13.5h4"/></svg>' }
   ];
   var SPORTS = { label: 'Sports', url: PUB + 'the-quant-sports/' };
   var HUB = { label: 'Today', site: 'The Quant Macro', url: PUB + 'the-quant-macro/' };
