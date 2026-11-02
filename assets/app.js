@@ -1186,7 +1186,9 @@ async function boot() {
   tokens();
   readHash();
   [META, BOARD] = await Promise.all([load("meta.json"), load("board.json")]);
-  $("#freshness").replaceChildren(el("span", { text: "Nowcasts run " }), el("b", { text: META.as_of + " UTC" }), el("br"), el("span", { text: `${META.economies} economies · ${META.targets} targets` }));
+  const pending = (META.health && META.health.not_refreshed) || [];
+  $("#freshness").replaceChildren(el("span", { text: "Nowcasts run " }), el("b", { text: META.as_of + " UTC" }), el("br"), el("span", { text: `${META.economies} economies · ${META.targets} targets` }),
+    ...(pending.length ? [el("br"), el("span", { text: `Data not refreshed in the last run: ${pending.join(", ")}`, title: `Nightly health check, ${META.health.date}` })] : []));
   $("#built").textContent = `Built ${META.built}.`;
   for (const t of $$(".tab")) t.addEventListener("click", () => showTab(t.dataset.tab));
   for (const b of $$("[data-goto]")) b.addEventListener("click", () => showTab(b.dataset.goto));
