@@ -142,3 +142,8 @@ td b.pos, td b, td .up, td .down { font-family: var(--font-num); font-weight: 50
 .call .tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
 .call .tags .meta { margin-left: 4px; }
 .psig { color: var(--amber); font-weight: 700; }
+
+/* a section that is its own page (pulse/), set like a tab */
+.tab-out { display: flex; align-items: center; margin-left: auto; padding: 0 12px; border-top: 3px solid transparent; border-bottom: 3px solid transparent;
+  color: var(--volt); font: 700 14px/1 var(--font-cond); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; text-decoration: none; }
+.tab-out:hover { color: #fff; }
